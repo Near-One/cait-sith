@@ -332,6 +332,13 @@ impl SharedChannel {
         }
     }
 
+    pub fn child(&self, i: u64) -> Self {
+        Self {
+            comms: self.comms.clone(),
+            header: self.header.child(i),
+        }
+    }
+
     /// Get the next available waitpoint on this channel.
     pub fn next_waitpoint(&mut self) -> Waitpoint {
         self.header.next_waitpoint()
