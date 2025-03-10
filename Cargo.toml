@@ -13,9 +13,11 @@ digest = "0.10.7"
 ecdsa = { version = "0.16.8", features = ["digest", "hazmat"] }
 elliptic-curve = { version = "0.13.5", features = ["serde"] }
 event-listener = "2.5.3"
+frost-core = { version = "2.1.0", features = ["internals"] }
 futures = "0.3.31"
-k256 = { version = "0.13.4", features = ["sha256", "ecdsa", "serde"], optional = true }
+k256 = { version = "0.13.1", features = ["sha256", "ecdsa", "serde"], optional = true }
 magikitten = "0.2.0"
+rand = "0.9.0"
 rand_core = { version = "0.6.4", features = ["getrandom"] }
 rmp-serde = "1.1.2"
 serde = { version = "1.0.175", features = ["derive"] }
@@ -36,9 +38,6 @@ required-features = ["k256"]
 
 [features]
 k256 = ["dep:k256"]
-## Expose internal types. This is an advanced feature which can be useful
-## if you need to build a modified version of protocol.
-internals = []
 
 [[example]]
 name = "network-benches"

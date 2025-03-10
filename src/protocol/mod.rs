@@ -9,13 +9,20 @@ use std::{collections::HashMap, error, fmt};
 
 use ::serde::{Deserialize, Serialize};
 
-use crate::compat::CSCurve;
+use frost_core::{serialization, Ciphersuite, Error, Field, Group, Scalar};
+use frost_core::serialization::SerializableScalar;
 
 /// Represents an error which can happen when running a protocol.
 #[derive(Debug)]
 pub enum ProtocolError {
     /// Some assertion in the protocol failed.
     AssertionFailed(String),
+    /// The ciphersuite does not support DKG.
+    DKGNotSupported,
+    /// Incorrect number of commitments.
+    IncorrectNumberOfCommitments(usize, usize),
+    /// The identifier of the signer whose share validation failed.
+    InvalidProofOfKnowledge(Participant),
     /// Some generic error happened.
     Other(Box<dyn error::Error + Send + Sync>),
 }
@@ -25,6 +32,9 @@ impl fmt::Display for ProtocolError {
         match self {
             ProtocolError::Other(e) => write!(f, "{}", e),
             ProtocolError::AssertionFailed(e) => write!(f, "assertion failed {}", e),
+            ProtocolError::IncorrectNumberOfCommitments(c, t) => write!(f, "incorrect number of commitments: {} is not equal to {}", c, t),
+            ProtocolError::InvalidProofOfKnowledge(p) => write!(f, "the proof of knowledge of participant {p:?} is not valid."),
+            ProtocolError::DKGNotSupported => write!(f, "the ciphersuite does not support DKG"),
         }
     }
 }
@@ -73,8 +83,18 @@ impl Participant {
     }
 
     /// Return the scalar associated with this participant.
-    pub fn scalar<C: CSCurve>(&self) -> C::Scalar {
-        C::Scalar::from(self.0 as u64 + 1)
+    /// We would like to prevent the
+    pub fn scalar<C:Ciphersuite>(&self) -> Result<Scalar<C>, ProtocolError> {
+        let bytes =  self.0.to_le_bytes();
+        // transform the bytes into a scalar and fails if Scalar
+        // is not in the range [0, order - 1]
+        let scalar = match SerializableScalar::<C>::deserialize(&bytes){
+            Ok(serialization) => serialization.0,
+            _ => return Err(ProtocolError::AssertionFailed(
+                        format!("Party {self:?} couldn't transform its id to a scalar"))),
+        };
+
+        Ok(scalar + <<C::Group as Group>::Field as Field>::one())
     }
 }
 

@@ -125,6 +125,7 @@ pub mod echo_broadcast;
 mod echo_broadcast;
 
 mod keyshare;
+mod generic_dkg;
 mod math;
 
 #[cfg(feature = "internals")]
