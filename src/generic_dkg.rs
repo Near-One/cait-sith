@@ -1,5 +1,6 @@
 use rand_core::OsRng;
-use std::ops::Index;
+use std::{future::Future, ops::Index};
+
 use crate::serde::encode;
 use crate::crypto::{Digest, hash};
 
@@ -12,7 +13,7 @@ use frost_core::keys::{
 
 use crate::echo_broadcast::do_broadcast;
 use crate::participants::{ParticipantCounter, ParticipantList, ParticipantMap};
-use crate::protocol::{Participant, ProtocolError};
+use crate::protocol::{InitializationError, Participant, Protocol, ProtocolError};
 use crate::protocol::internal::{make_protocol, Context, SharedChannel};
 
 
@@ -299,7 +300,6 @@ async fn do_keyshare<C: Ciphersuite>(
     secret: Scalar<C>,
     old_reshare_package: Option<(VerifyingKey<C>, ParticipantList)>,
     mut rng: OsRng,
-// ) -> Result<(C::Scalar, C::AffinePoint), ProtocolError> {
  ) -> Result<(SigningKey<C>, VerifyingKey<C>), ProtocolError>{
 
     let mut all_commitments = ParticipantMap::new(&participants);
@@ -425,48 +425,70 @@ async fn do_keyshare<C: Ciphersuite>(
 }
 
 
-fn do_keygen<C: Ciphersuite>(){
-    // pick share at random
-    let mut rng = OsRng;
-    let secret: SigningKey<C> = SigningKey::new(&mut rng);
 
-    // TODO
-
-    // run keyshare
-    // output OK(output)
+/// Represents the output of the key generation protocol.
+///
+/// This contains our share of the private key, along with the public key.
+#[derive(Debug, Clone)]
+pub struct KeygenOutput<C: Ciphersuite> {
+    pub private_share: SigningKey<C>,
+    pub public_key: VerifyingKey<C>,
 }
 
-pub fn keygen(){
-    // // validate_num_of_signers::<C>(min_signers, max_signers)?;
-    // if participants.len() < 2 {
-    //     return Err(InitializationError::BadParameters(format!(
-    //         "participant count cannot be < 2, found: {}",
-    //         participants.len()
-    //     )));
-    // };
+async fn do_keygen<C: Ciphersuite>(
+    chan: SharedChannel,
+    participants: ParticipantList,
+    me: Participant,
+    threshold: usize,
+    ) -> Result<KeygenOutput<C>, ProtocolError> {
+    // pick share at random
+    let mut rng = OsRng;
+    let secret = SigningKey::<C>::new(&mut rng).to_scalar();
+    // call keyshare
+    let (private_share, public_key) =
+        do_keyshare::<C>(chan, participants, me, threshold, secret, None, rng).await?;
+    Ok(KeygenOutput {
+        private_share,
+        public_key,
+    })
+}
 
-    // // validate threshold
-    // if threshold > participants.len() {
-    //     return Err(InitializationError::BadParameters(
-    //         "threshold must be <= participant count".to_string(),
-    //     ));
-    // }
+pub async fn keygen<C: Ciphersuite>(
+    participants: &[Participant],
+    me: Participant,
+    threshold: usize,
+) -> Result<(Context, Future<Output = Result<KeygenOutput<C>, ProtocolError>>), InitializationError> {
+    // need enough participants
+    if participants.len() < 2 {
+        return Err(InitializationError::BadParameters(format!(
+            "participant count cannot be < 2, found: {}",
+            participants.len()
+        )));
+    };
 
-    // // ensure uniqueness of participants in the participant list
-    // let participants = ParticipantList::new(participants).ok_or_else(|| {
-    //     InitializationError::BadParameters("participant list cannot contain duplicates".to_string())
-    // })?;
+    // validate threshold
+    if threshold > participants.len() {
+        return Err(InitializationError::BadParameters(
+            "threshold must be <= participant count".to_string(),
+        ));
+    }
 
-    // // ensure my presence in the participant list
-    // if !participants.contains(me) {
-    //     return Err(InitializationError::BadParameters(
-    //         "participant list must contain this participant".to_string(),
-    //     ));
-    // }
+    // ensure uniqueness of participants in the participant list
+    let participants = ParticipantList::new(participants).ok_or_else(|| {
+        InitializationError::BadParameters("participant list cannot contain duplicates".to_string())
+    })?;
 
+    // ensure my presence in the participant list
+    if !participants.contains(me) {
+        return Err(InitializationError::BadParameters(
+            "participant list must contain this participant".to_string(),
+        ));
+    };
 
-    // let ctx = Context::new();
-    // let fut = do_keygen(ctx.shared_channel(), participants, me, threshold);
+    let ctx = Context::new();
+    let fut = do_keygen::<C>(ctx.shared_channel(), participants, me, threshold);
+    Ok((ctx, fut))
+    // Make Protocol only works when instanciating the Ciphersuite C
     // Ok(make_protocol(ctx, fut))
 }
 
