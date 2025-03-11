@@ -9,7 +9,7 @@ use std::{collections::HashMap, error, fmt};
 
 use ::serde::{Deserialize, Serialize};
 
-use frost_core::{serialization, Ciphersuite, Error, Field, Group, Scalar};
+use frost_core::{Ciphersuite, Field, Group, Scalar};
 use frost_core::serialization::SerializableScalar;
 
 /// Represents an error which can happen when running a protocol.
@@ -19,10 +19,18 @@ pub enum ProtocolError {
     AssertionFailed(String),
     /// The ciphersuite does not support DKG.
     DKGNotSupported,
+    /// Could not extract the verification Key from a commitment.
+    ErrorExtractVerificationKey,
     /// Incorrect number of commitments.
-    IncorrectNumberOfCommitments(usize, usize),
+    IncorrectNumberOfCommitments,
     /// The identifier of the signer whose share validation failed.
     InvalidProofOfKnowledge(Participant),
+    /// The validation of the secret share sent has failed
+    InvalidSecretShare(Participant),
+    /// Detected malicious participant
+    MaliciousParticipant(Participant),
+    /// The signing key is zero
+    MalformedSigningKey,
     /// Some generic error happened.
     Other(Box<dyn error::Error + Send + Sync>),
 }
@@ -32,9 +40,13 @@ impl fmt::Display for ProtocolError {
         match self {
             ProtocolError::Other(e) => write!(f, "{}", e),
             ProtocolError::AssertionFailed(e) => write!(f, "assertion failed {}", e),
-            ProtocolError::IncorrectNumberOfCommitments(c, t) => write!(f, "incorrect number of commitments: {} is not equal to {}", c, t),
-            ProtocolError::InvalidProofOfKnowledge(p) => write!(f, "the proof of knowledge of participant {p:?} is not valid."),
             ProtocolError::DKGNotSupported => write!(f, "the ciphersuite does not support DKG"),
+            ProtocolError::ErrorExtractVerificationKey => write!(f, "could not extract the verification Key from the commitment."),
+            ProtocolError::IncorrectNumberOfCommitments => write!(f, "incorrect number of commitments"),
+            ProtocolError::InvalidProofOfKnowledge(p) => write!(f, "the proof of knowledge of participant {p:?} is not valid."),
+            ProtocolError::InvalidSecretShare(p) => write!(f, "participant {p:?} sent an invalid secret share."),
+            ProtocolError::MaliciousParticipant(p) => write!(f, "detected a malicious participant {p:?}."),
+            ProtocolError::MalformedSigningKey => write!(f, "the constructed signing key is null."),
         }
     }
 }
