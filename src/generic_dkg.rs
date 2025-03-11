@@ -1,5 +1,7 @@
 use rand_core::OsRng;
 use std::ops::Index;
+use crate::serde::encode;
+use crate::crypto::{Digest, hash};
 
 use frost_core::{
     Challenge, Ciphersuite, Element, Field, Group, Scalar, Signature, SigningKey, VerifyingKey, Identifier, Error
@@ -214,6 +216,36 @@ fn validate_received_share<C:Ciphersuite>(
     Ok(())
 }
 
+/// computes a transcript hash out of the public data
+fn compute_transcript_hash<C:Ciphersuite>(
+    participants: &ParticipantList,
+    threshold: usize,
+    all_commitments: &ParticipantMap<'_, VerifiableSecretSharingCommitment<C>>,
+    all_proofs: &ParticipantMap<'_, Option<Signature<C>>>,
+    ) -> Digest{
+    // transcript contains:
+    //      groupname
+    //      participants
+    //      threshold
+    //      commitments
+    //      zk proofs
+    // we do not need to include the master verification key mvk as it is directly extracted from commitments
+    let mut transcript = Vec::new();
+    transcript.extend_from_slice(LABEL);
+    transcript.extend_from_slice(b"group");
+    transcript.extend_from_slice(C::ID.as_bytes());
+    transcript.extend_from_slice(b"participants");
+    transcript.extend_from_slice(&encode(participants));
+    transcript.extend_from_slice(b"threshold");
+    transcript.extend_from_slice(&u64::try_from(threshold).unwrap().to_be_bytes());
+    transcript.extend_from_slice(b"all commitments");
+    transcript.extend_from_slice(b"commitment opening: big_f");
+    transcript.extend_from_slice(hash(all_commitments).as_ref());
+    transcript.extend_from_slice(b"proofs");
+    transcript.extend_from_slice(hash(all_proofs).as_ref());
+    hash(&transcript)
+}
+
 /// generates a verification key out of a public commited polynomial
 fn verifying_key_from_commitments<C:Ciphersuite>(
     commitments: Vec<&VerifiableSecretSharingCommitment<C>>
@@ -223,6 +255,40 @@ fn verifying_key_from_commitments<C:Ciphersuite>(
     let vk = VerifyingKey::from_commitment(&group_commitment)
         .map_err(|_| ProtocolError::ErrorExtractVerificationKey)?;
     Ok(vk)
+}
+
+
+async fn broadcast_success_failure(
+    chan: &mut SharedChannel,
+    participants: &ParticipantList,
+    me: &Participant,
+    err: Option<ProtocolError>,
+) -> Result<(), ProtocolError>{
+    match err {
+        // Need for consistent Broadcast to prevent adversary from sending
+        // that it failed to some honest parties but not the others implying
+        // that only some parties will drop out of the protocol but not others
+        Some(err) => {
+            // broadcast node me failed
+            do_broadcast(chan, participants, me, false).await?;
+            return Err(err);
+        }
+
+        None => {
+            // broadcast node me succeded
+            let vote_list = do_broadcast(chan, participants, me, true).await?;
+            // unwrap here would never fail as the broadcast protocol ends only when the map is full
+            let vote_list = vote_list.into_vec_or_none().unwrap();
+            // go through all the list of votes and check if any is fail
+            if vote_list.contains(&false) {
+                return Err(ProtocolError::AssertionFailed(format!(
+                    "A participant seems to have failed its checks. Aborting DKG!"
+                )));
+            };
+            // Wait for all the tasks to complete
+            return Ok(());
+        }
+    }
 }
 
 async fn do_keyshare<C: Ciphersuite>(
@@ -236,8 +302,11 @@ async fn do_keyshare<C: Ciphersuite>(
 // ) -> Result<(C::Scalar, C::AffinePoint), ProtocolError> {
  ) -> Result<(SigningKey<C>, VerifyingKey<C>), ProtocolError>{
 
+    let mut all_commitments = ParticipantMap::new(&participants);
+    let mut all_proofs = ParticipantMap::new(&participants);
+
     // Make sure you do not call do_keyshare with zero as secret on an old participant
-    let (old_keyshare, old_participants) = assert_keyshare_inputs(me, &secret, old_reshare_package)?;
+    let (old_verification_key, old_participants) = assert_keyshare_inputs(me, &secret, old_reshare_package)?;
 
     // Start Round 1
     // generate your secret polynomial p with the constant term set to the secret
@@ -250,10 +319,14 @@ async fn do_keyshare<C: Ciphersuite>(
         .map(|c| CoefficientCommitment::new(<C::Group as Group>::generator() * *c))
         .collect();
     // generate a proof of knowledge if the participant me is not holding a secret that is zero
-    let proof_of_knowledge = compute_proof_of_knowledge(me, old_participants, &secret_coefficients, &coefficient_commitment, &mut rng)?;
+    let proof_of_knowledge = compute_proof_of_knowledge(me, old_participants.clone(), &secret_coefficients, &coefficient_commitment, &mut rng)?;
 
     // Create the public polynomial = secret coefficients times G
     let commitment = VerifiableSecretSharingCommitment::new(coefficient_commitment);
+
+    // add my commitment and proof to the map
+    all_commitments.put(me, commitment.clone());
+    all_proofs.put(me, proof_of_knowledge.clone());
 
     // Broadcast to all the commitment and the proof of knowledge
     let commitments_and_proofs_map = do_broadcast(&mut chan, &participants, &me, (commitment, proof_of_knowledge)).await?;
@@ -269,7 +342,11 @@ async fn do_keyshare<C: Ciphersuite>(
         // verify the proof of knowledge
         // if proof is none then make sure the participant is new
         // and performing a resharing not a DKG
-        verify_proof_of_knowledge(p, old_participants, commitment_i, proof_i)?;
+        verify_proof_of_knowledge(p, old_participants.clone(), commitment_i, proof_i)?;
+
+        // add received commitment and proof to the map
+        all_commitments.put(p, commitment_i.clone());
+        all_proofs.put(p, proof_i.clone());
 
         // Securely send to each other participant a secret share
         // using the evaluation secret polynomial on the identifier of the recipient
@@ -289,57 +366,62 @@ async fn do_keyshare<C: Ciphersuite>(
             continue
         }
 
-        let (commitment_from, proof_from) = commitments_and_proofs_map.index(from);
+        let commitment_from = all_commitments.index(from);
 
         // Verify the share
-        let err = validate_received_share::<C>(&me, &from, &signing_share_from, commitment_from);
+        validate_received_share::<C>(&me, &from, &signing_share_from, commitment_from)?;
 
         // Compute the sum of all the owned secret shares
         // At the end of this loop, I will be owning a valid secret signing share
         my_signing_share = my_signing_share + signing_share_from.to_scalar();
 
     };
+
+    // Start Round 3
+    // compute transcript hash
+    let my_transcript = compute_transcript_hash(&participants, threshold, &all_commitments, &all_proofs);
+    // receive all transcript hashes
+    let transcript_list = do_broadcast(&mut chan, &participants, &me, my_transcript).await?;
+    let transcript_list = transcript_list.into_vec_or_none().unwrap();
+    // verify that all the transcripts are the same
+    let mut err = None;
+    // check transcript hashes
+    for their_transcript in transcript_list {
+        if my_transcript != their_transcript {
+            err = Some(ProtocolError::AssertionFailed(format!("transcript hash did not match expectation")));
+            break;
+        }
+    }
+
+    // Construct the keypairs
     // Construct the signing share
     let signing_share = SigningKey::<C>::from_scalar(my_signing_share)
     .map_err(|_| ProtocolError::MalformedSigningKey)?;
+    // cannot fail as all_commitments at least contains my commitment
+    let all_commitments_vec = all_commitments.into_vec_or_none().unwrap();
+    let all_commitments_refs = all_commitments_vec.iter().collect();
 
-    // Calculate the public verification key.
-    let verifying_key = verifying_key_from_commitments(all_commitments)?;
+        // Calculate the public verification key.
+    let verifying_key = match verifying_key_from_commitments(all_commitments_refs){
+        Ok(vk) => Some(vk),
+        Err(e) => {err = Some(e); None},
+    };
 
-    return Ok((signing_share, verifying_key));
+    // In the case of Resharing, check if the old public key is the same as the new one
+    if let Some(vk) = old_verification_key {
+        if verifying_key.is_some(){
+            // check the equality between the old key and the new key without failing the unwrap
+            if vk != verifying_key.unwrap(){
+                err = Some(ProtocolError::AssertionFailed(format!("new public key does not match old public key")));
+            }
+        };
+    };
 
+    // Start Round 4
+    broadcast_success_failure(&mut chan, &participants, &me, err).await?;
 
-
-    // // all_commitments.put(me, commitment);
-    // // // while !all_commitments.full() {
-    // // //     let (from, commitment) = chan.recv(wait0).await?;
-    // // //     all_commitments.put(from, commitment);
-    // // // }
-
-
-
-
-    // // transcript data
-    // let mut transcript = Vec::new();
-    // transcript.extend_from_slice(LABEL);
-    // transcript.extend_from_slice(b"group");
-    // transcript.extend_from_slice(C::ID.as_bytes());
-    // transcript.extend_from_slice(b"participants");
-    // transcript.extend_from_slice(&encode(&participants));
-    // transcript.extend_from_slice(b"threshold");
-    // transcript.extend_from_slice(&u64::try_from(threshold).unwrap().to_be_bytes());
-    // transcript.extend_from_slice(b"all commitments");
-
-
-
-
-    // match old_pk {
-    //     Some(big_s) if big_s != big_x => {
-    //         err = "new public key does not match old public key".to_string()
-    //     }
-    //     _ => {}
-    // };
-
+    // unwrap cannot fail as round 4 ensures failing if verification_key is None
+    return Ok((signing_share, verifying_key.unwrap()));
 }
 
 
