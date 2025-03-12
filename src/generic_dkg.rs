@@ -130,7 +130,7 @@ fn proof_of_knowledge<C: Ciphersuite>(
 fn compute_proof_of_knowledge<C: Ciphersuite>(
     me: Participant,
     old_participants: Option<ParticipantList>,
-    coefficients: &[Scalar<C>],
+    coefficients: &Vec<Scalar<C>>,
     coefficient_commitment: &Vec<CoefficientCommitment<C>>,
     rng: &mut OsRng,
 ) -> Result<Option<Signature<C>>, ProtocolError> {
@@ -140,7 +140,7 @@ fn compute_proof_of_knowledge<C: Ciphersuite>(
         return Ok(None)
     };
     // generate a proof of knowledge if the participant me is not holding a secret that is zero
-    let proof = proof_of_knowledge(me, coefficients, coefficient_commitment, rng)?;
+    let proof = proof_of_knowledge(me, &coefficients[..], coefficient_commitment, rng)?;
     Ok(Some(proof))
 }
 
@@ -179,11 +179,11 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
 
 // evaluates a polynomial on the identifier of the participant
 fn evaluate_polynomial<C:Ciphersuite>
-    (coefficients: &[Scalar<C>], participant: Participant) -> Result<SigningShare<C>, ProtocolError> {
+    (coefficients: &Vec<Scalar<C>>, participant: Participant) -> Result<SigningShare<C>, ProtocolError> {
     let id = participant.generic_scalar::<C>()?;
     // cannot panic as the previous line ensures id is neq zero
     let id = Identifier::new(id).unwrap();
-    Ok(SigningShare::from_coefficients(coefficients, id))
+    Ok(SigningShare::from_coefficients(&coefficients[..], id))
 }
 
 // creates a signing share structure using my identifier, the received
