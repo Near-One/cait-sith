@@ -111,7 +111,7 @@ fn proof_of_knowledge<C: Ciphersuite>(
     rng: &mut OsRng,
 ) -> Result<Signature<C>, ProtocolError> {
     // creates an identifier for the participant
-    let id = me.scalar::<C>()?;
+    let id = me.generic_scalar::<C>()?;
     let vk_share = coefficient_commitment[0];
 
     // pick a random k_i and compute R_id = g^{k_id},
@@ -164,7 +164,7 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
 
     // now we know the proof is not none
     let proof_of_knowledge = proof_of_knowledge.unwrap();
-    let id = participant.scalar::<C>()?;
+    let id = participant.generic_scalar::<C>()?;
     // creating an identifier as required by the syntax of verify_proof_of_knowledge of frost_core
     // cannot panic as the previous line ensures id is neq zero
     let id = Identifier::new(id).unwrap();
@@ -175,7 +175,7 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
 // evaluates a polynomial on the identifier of the participant
 fn evaluate_polynomial<C:Ciphersuite>
     (coefficients: &[Scalar<C>], participant: Participant) -> Result<SigningShare<C>, ProtocolError> {
-    let id = participant.scalar::<C>()?;
+    let id = participant.generic_scalar::<C>()?;
     // cannot panic as the previous line ensures id is neq zero
     let id = Identifier::new(id).unwrap();
     Ok(SigningShare::from_coefficients(coefficients, id))
@@ -190,7 +190,7 @@ fn validate_received_share<C:Ciphersuite>(
     commitment: &VerifiableSecretSharingCommitment<C>,
 ) -> Result<(), ProtocolError>{
 
-    let id = me.scalar::<C>()?;
+    let id = me.generic_scalar::<C>()?;
     // cannot panic as the previous line ensures id is neq zero
     let id = Identifier::new(id).unwrap();
 

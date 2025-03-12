@@ -8,6 +8,7 @@
 use std::{collections::HashMap, error, fmt};
 
 use ::serde::{Deserialize, Serialize};
+use crate::compat::CSCurve;
 
 use frost_core::{Ciphersuite, Field, Group, Scalar};
 use frost_core::serialization::SerializableScalar;
@@ -95,8 +96,14 @@ impl Participant {
     }
 
     /// Return the scalar associated with this participant.
-    /// We would like to prevent the
-    pub fn scalar<C:Ciphersuite>(&self) -> Result<Scalar<C>, ProtocolError> {
+    /// The implementation follows the original cait-sith library
+    pub fn scalar<C: CSCurve>(&self) -> C::Scalar {
+        C::Scalar::from(self.0 as u64 + 1)
+    }
+
+    /// Return the scalar associated with this participant.
+    /// The implementation follows the original frost library
+    pub fn generic_scalar<C:Ciphersuite>(&self) -> Result<Scalar<C>, ProtocolError> {
         let bytes =  self.0.to_le_bytes();
         // transform the bytes into a scalar and fails if Scalar
         // is not in the range [0, order - 1]
@@ -105,7 +112,7 @@ impl Participant {
             _ => return Err(ProtocolError::AssertionFailed(
                         format!("Party {self:?} couldn't transform its id to a scalar"))),
         };
-
+        // We prevent having the scalar be zero
         Ok(scalar + <<C::Group as Group>::Field as Field>::one())
     }
 }
