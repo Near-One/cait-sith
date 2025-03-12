@@ -7,11 +7,11 @@
 //! to serialize the emssages it produces.
 use std::{collections::HashMap, error, fmt};
 
-use ::serde::{Deserialize, Serialize};
 use crate::compat::CSCurve;
+use ::serde::{Deserialize, Serialize};
 
-use frost_core::{Ciphersuite, Field, Group, Scalar};
 use frost_core::serialization::SerializableScalar;
+use frost_core::{Ciphersuite, Field, Group, Scalar};
 
 /// Represents an error which can happen when running a protocol.
 #[derive(Debug)]
@@ -42,11 +42,23 @@ impl fmt::Display for ProtocolError {
             ProtocolError::Other(e) => write!(f, "{}", e),
             ProtocolError::AssertionFailed(e) => write!(f, "assertion failed {}", e),
             ProtocolError::DKGNotSupported => write!(f, "the ciphersuite does not support DKG"),
-            ProtocolError::ErrorExtractVerificationKey => write!(f, "could not extract the verification Key from the commitment."),
-            ProtocolError::IncorrectNumberOfCommitments => write!(f, "incorrect number of commitments"),
-            ProtocolError::InvalidProofOfKnowledge(p) => write!(f, "the proof of knowledge of participant {p:?} is not valid."),
-            ProtocolError::InvalidSecretShare(p) => write!(f, "participant {p:?} sent an invalid secret share."),
-            ProtocolError::MaliciousParticipant(p) => write!(f, "detected a malicious participant {p:?}."),
+            ProtocolError::ErrorExtractVerificationKey => write!(
+                f,
+                "could not extract the verification Key from the commitment."
+            ),
+            ProtocolError::IncorrectNumberOfCommitments => {
+                write!(f, "incorrect number of commitments")
+            }
+            ProtocolError::InvalidProofOfKnowledge(p) => write!(
+                f,
+                "the proof of knowledge of participant {p:?} is not valid."
+            ),
+            ProtocolError::InvalidSecretShare(p) => {
+                write!(f, "participant {p:?} sent an invalid secret share.")
+            }
+            ProtocolError::MaliciousParticipant(p) => {
+                write!(f, "detected a malicious participant {p:?}.")
+            }
             ProtocolError::MalformedSigningKey => write!(f, "the constructed signing key is null."),
         }
     }
@@ -103,14 +115,17 @@ impl Participant {
 
     /// Return the scalar associated with this participant.
     /// The implementation follows the original frost library
-    pub fn generic_scalar<C:Ciphersuite>(&self) -> Result<Scalar<C>, ProtocolError> {
-        let bytes =  self.0.to_le_bytes();
+    pub fn generic_scalar<C: Ciphersuite>(&self) -> Result<Scalar<C>, ProtocolError> {
+        let bytes = self.0.to_le_bytes();
         // transform the bytes into a scalar and fails if Scalar
         // is not in the range [0, order - 1]
-        let scalar = match SerializableScalar::<C>::deserialize(&bytes){
+        let scalar = match SerializableScalar::<C>::deserialize(&bytes) {
             Ok(serialization) => serialization.0,
-            _ => return Err(ProtocolError::AssertionFailed(
-                        format!("Party {self:?} couldn't transform its id to a scalar"))),
+            _ => {
+                return Err(ProtocolError::AssertionFailed(format!(
+                    "Party {self:?} couldn't transform its id to a scalar"
+                )))
+            }
         };
         // We prevent having the scalar be zero
         Ok(scalar + <<C::Group as Group>::Field as Field>::one())

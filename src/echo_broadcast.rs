@@ -68,10 +68,12 @@ fn echo_ready_thresholds(n: usize) -> (usize, usize) {
     // case where no malicious parties are assumed: when n <= 3/
     // In this case the echo and ready thresholds are both 0
     // later we compare if we have collected more votes than these thresholds
-    if n <= 3 { return (0,0); }
+    if n <= 3 {
+        return (0, 0);
+    }
     // we should always have n >= 3*threshold + 1
-    let broadcast_threshold = (n-1)/3;
-    let echo_threshold = (n+broadcast_threshold)/2;
+    let broadcast_threshold = (n - 1) / 3;
+    let echo_threshold = (n + broadcast_threshold) / 2;
     (echo_threshold, broadcast_threshold)
 }
 
@@ -112,7 +114,7 @@ where
     let n = participants.len();
     let (echo_t, ready_t) = echo_ready_thresholds(n);
 
-    let mut vote_output= ParticipantMap::new(&participants);
+    let mut vote_output = ParticipantMap::new(&participants);
 
     // first dimension determines the session
     // second dimension contains the counter for the received data
@@ -132,11 +134,13 @@ where
     // receive simulated vote
     let mut from = me.clone();
     let mut sid = participants.index(&me);
-    let mut vote = match send_vote{
+    let mut vote = match send_vote {
         MessageType::Send(_) => send_vote.clone(),
-        _ => return Err(ProtocolError::AssertionFailed(format!(
+        _ => {
+            return Err(ProtocolError::AssertionFailed(format!(
             "Function reliable_broadcast_receive_all MUST take a vote of type send_vote as input"
-        ))),
+        )))
+        }
     };
     let mut is_simulated_vote = true;
 
@@ -188,8 +192,7 @@ where
                 // for a result, deliver Ready
                 if data_echo[sid].get(&data).unwrap() > echo_t {
                     vote = MessageType::Ready(data);
-                    chan.send_many(wait, &(&sid, &vote))
-                        .await;
+                    chan.send_many(wait, &(&sid, &vote)).await;
                     // state that the echo phase for session id (sid) is done
                     finish_echo[sid] = true;
 
@@ -197,7 +200,6 @@ where
                     is_simulated_vote = true;
                     from = me.clone();
                 }
-
                 // suppose you receive not enough echo votes but the amount of votes
                 // left to receive is not sufficient to proceed to the ready phase
                 // then deduce that the sender is malicious and stop
@@ -245,8 +247,7 @@ where
                     && finish_amplification[sid] == false
                 {
                     vote = MessageType::Ready(data.clone());
-                    chan.send_many(wait, &(&sid, &vote))
-                        .await;
+                    chan.send_many(wait, &(&sid, &vote)).await;
                     finish_amplification[sid] = true;
 
                     // simulate a ready vote sent by me
@@ -267,8 +268,8 @@ where
 
                     // Output error if the received vote after broadcast is not
                     // the same as the one originally sent
-                    if sid == participants.index(&me){
-                        if MessageType::Send(data) != send_vote{
+                    if sid == participants.index(&me) {
+                        if MessageType::Send(data) != send_vote {
                             return Err(ProtocolError::AssertionFailed(format!(
                                 "Too many malicious parties, way above the assumed threshold:
                                 The message output after the broadcast protocol is not the same as
