@@ -459,11 +459,11 @@ pub async fn do_keygen<C: Ciphersuite>(
     })
 }
 
-pub async fn keygen<C: Ciphersuite>(
+pub fn keygen_assertions<C: Ciphersuite>(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
-) -> Result<(Context, Future<Output = Result<KeygenOutput<C>, ProtocolError>>), InitializationError> {
+) -> Result<ParticipantList, InitializationError> {
     // need enough participants
     if participants.len() < 2 {
         return Err(InitializationError::BadParameters(format!(
@@ -490,43 +490,95 @@ pub async fn keygen<C: Ciphersuite>(
             "participant list must contain this participant".to_string(),
         ));
     };
+    Ok(participants)
 
-    let ctx = Context::new();
-    let fut = do_keygen::<C>(ctx.shared_channel(), participants, me, threshold);
-    Ok((ctx, fut))
+    // TODO: during instantiations
+    // let ctx = Context::new();
+    // let output = do_keygen::<C Instantiated Curve>(ctx.shared_channel(), participants, me, threshold).await?;
+    // Ok((ctx, output))
     // Make Protocol only works when instanciating the Ciphersuite C
     // Ok(make_protocol(ctx, fut))
 }
 
+/// reshares the keyshares between the parties and allows changing the threshold
+pub async fn do_reshare<C: Ciphersuite>(
+    chan: SharedChannel,
+    participants: ParticipantList,
+    me: Participant,
+    threshold: usize,
+    old_signing_key: Option<SigningKey<C>>,
+    old_public_key: VerifyingKey<C>,
+    old_participants: ParticipantList,
+)-> Result<KeygenOutput<C>, ProtocolError>{
+    // prepare the random number generator
+    let rng = OsRng;
 
-fn do_reshare<C: Ciphersuite>
-    (old_signing_key: Option<SigningKey<C>>){
-    let mut rng = OsRng;
+    // either extract the share and linearize it or set it to zero
+    // TODO: compute_lagrange_coefficient in libs
+    todo!("change the function lagrange into another one supported by frost library");
+    let secret = old_signing_key
+    .map(|x_i| old_participants.lagrange::<C>(me) * x_i.to_scalar())
+    .unwrap_or(<C::Group as Group>::Field::zero());
 
-    // make sure that me is in the new participant set but not in the old one
-    // if that is the case but old_signing_key is set to something that is not None
-    // then return Error... this means that somebody has plugged an extremely
-    // old key in the function
+    let old_reshare_package = Some((old_public_key, old_participants));
+    // call keyshare
+    let (private_share, public_key) =
+        do_keyshare::<C>(chan, participants, me, threshold, secret, old_reshare_package, rng).await?;
 
-    let secret: Scalar<C> = match old_signing_key {
-        // set share to 0 if there was no old signing key
-        None => <C::Group as Group>::Field::zero(),
-        Some(secret) => secret.to_scalar(),
+    Ok(KeygenOutput {
+        private_share,
+        public_key,
+    })
+}
+
+pub fn reshare_assertions<C: Ciphersuite>(
+    participants: &[Participant],
+    me: Participant,
+    threshold: usize,
+    old_signing_key: Option<SigningKey<C>>,
+    old_threshold: usize,
+    old_participants: &[Participant],
+)-> Result<(ParticipantList, ParticipantList), InitializationError>{
+    if participants.len() < 2 {
+        return Err(InitializationError::BadParameters(format!(
+            "participant count cannot be < 2, found: {}",
+            participants.len()
+        )));
     };
-    // if is none, set share to zero
+    if threshold > participants.len() {
+        return Err(InitializationError::BadParameters(
+            "threshold must be <= participant count".to_string(),
+        ));
+    }
 
-}
+    let participants = ParticipantList::new(participants).ok_or_else(|| {
+        InitializationError::BadParameters(
+            "new participant list cannot contain duplicates".to_string(),
+        )
+    })?;
 
-pub fn reshare(){
-    // validate_num_of_signers::<C>(min_signers, max_signers)?;
-    // validate thresholds
-    // validate old set/new set
-    // etc
-}
+    if !participants.contains(me) {
+        return Err(InitializationError::BadParameters(
+            "new participant list must contain this participant".to_string(),
+        ));
+    }
 
+    let old_participants = ParticipantList::new(old_participants).ok_or_else(|| {
+        InitializationError::BadParameters(
+            "old participant list cannot contain duplicates".to_string(),
+        )
+    })?;
 
-/// The refresh protocol.
-/// This is like resharing, but having the old participants set be the same as the new one.
-pub fn refresh(){
-
+    if old_participants.intersection(&participants).len() < old_threshold {
+        return Err(InitializationError::BadParameters(
+            "not enough old participants to reconstruct private key for resharing".to_string(),
+        ));
+    }
+    // if me is not in the old participant set then ensure that old_signing_key is None
+    if old_participants.contains(me) && old_signing_key.is_none() {
+        return Err(InitializationError::BadParameters(
+            "this party is present in the old participant list but provided no share".to_string(),
+        ));
+    }
+    Ok((participants,old_participants))
 }
