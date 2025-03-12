@@ -1,5 +1,5 @@
 use rand_core::OsRng;
-use std::{future::Future, ops::Index};
+use std::ops::Index;
 
 use crate::serde::encode;
 use crate::crypto::{Digest, hash};
@@ -158,6 +158,11 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
     // check that only the parties that are new can send none and the others do not!
     if proof_of_knowledge.is_none(){
         if old_participants.is_none() || old_participants.unwrap().contains(participant){
+            return Err(ProtocolError::MaliciousParticipant(participant))
+        }
+    }else{
+        // check that new participants have indeed sent none!
+        if old_participants.is_some() && !old_participants.unwrap().contains(participant){
             return Err(ProtocolError::MaliciousParticipant(participant))
         }
     };
@@ -330,6 +335,7 @@ async fn do_keyshare<C: Ciphersuite>(
 
     // Broadcast to all the commitment and the proof of knowledge
     let commitments_and_proofs_map = do_broadcast(&mut chan, &participants, &me, (commitment, proof_of_knowledge)).await?;
+    todo!("The identity cannot be serialized! do something about it");
 
     // Start Round 2
     let wait_round2 = chan.next_waitpoint();
@@ -435,7 +441,7 @@ pub struct KeygenOutput<C: Ciphersuite> {
     pub public_key: VerifyingKey<C>,
 }
 
-async fn do_keygen<C: Ciphersuite>(
+pub async fn do_keygen<C: Ciphersuite>(
     chan: SharedChannel,
     participants: ParticipantList,
     me: Participant,
