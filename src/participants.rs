@@ -6,10 +6,11 @@
 
 use std::{collections::HashMap, mem, ops::Index};
 
-use elliptic_curve::Field;
 use serde::Serialize;
+use frost_core::{Scalar, Group, Ciphersuite};
 
-use crate::{compat::CSCurve, protocol::Participant};
+use crate::{compat::CSCurve, protocol::{Participant, ProtocolError}};
+
 
 /// Represents a sorted list of participants.
 ///
@@ -82,7 +83,10 @@ impl ParticipantList {
     }
 
     /// Get the lagrange coefficient for a participant, relative to this list.
+    /// Use cait-sith library curve type
     pub fn lagrange<C: CSCurve>(&self, p: Participant) -> C::Scalar {
+        use elliptic_curve::Field;
+
         let p_scalar = p.scalar::<C>();
 
         let mut top = C::Scalar::ONE;
@@ -98,6 +102,27 @@ impl ParticipantList {
 
         top * bot.invert().unwrap()
     }
+
+    /// Get the lagrange coefficient for a participant, relative to this list.
+    /// Use generic frost library types
+    pub fn generic_lagrange<C: Ciphersuite>(&self, p: Participant) -> Scalar<C> {
+        use frost_core::Field;
+        let p_scalar = p.generic_scalar::<C>().unwrap();
+
+        let mut top = <C::Group as Group>::Field::one();
+        let mut bot = <C::Group as Group>::Field::one();
+        for q in &self.participants {
+            if p == *q {
+                continue;
+            }
+            let q_scalar = q.generic_scalar::<C>().unwrap();
+            top = top* q_scalar;
+            bot = bot*(q_scalar - p_scalar);
+        }
+        let inverted = <C::Group as Group>::Field::invert(&bot).unwrap();
+        top * inverted
+    }
+
 
     /// Return the intersection of this list with another list.
     pub fn intersection(&self, others: &ParticipantList) -> Self {

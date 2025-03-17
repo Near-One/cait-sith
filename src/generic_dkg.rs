@@ -14,8 +14,8 @@ use frost_core::{
 
 use crate::echo_broadcast::do_broadcast;
 use crate::participants::{ParticipantCounter, ParticipantList, ParticipantMap};
-use crate::protocol::internal::{make_protocol, Context, SharedChannel};
-use crate::protocol::{InitializationError, Participant, Protocol, ProtocolError};
+use crate::protocol::internal::SharedChannel;
+use crate::protocol::{InitializationError, Participant, ProtocolError};
 
 const LABEL: &[u8] = b"Generic DKG";
 
@@ -59,13 +59,16 @@ fn generate_secret_polynomial<C: Ciphersuite>(
     threshold: usize,
     rng: &mut OsRng,
 ) -> Vec<Scalar<C>> {
-    let mut coefficients = Vec::with_capacity(threshold);
-
-    coefficients.push(secret);
+    let mut coefficients = Vec::new();
+    // insert the secret share the the unique case if it is zero
+    // we simulate the zero share as neither zero scalar
+    // nor identity group element are serializable
+    if secret != <C::Group as Group>::Field::zero(){
+        coefficients.push(secret);
+    }
     for _ in 1..threshold {
         coefficients.push(<C::Group as Group>::Field::random(rng));
     }
-
     coefficients
 }
 
@@ -150,21 +153,34 @@ fn compute_proof_of_knowledge<C: Ciphersuite>(
 /// if the proof of knowledge is none then make sure that the participant is
 /// performing reshare and does not exist in the set of old participants
 fn verify_proof_of_knowledge<C: Ciphersuite>(
+    threshold: usize,
     participant: Participant,
     old_participants: Option<ParticipantList>,
     commitment: &VerifiableSecretSharingCommitment<C>,
     proof_of_knowledge: &Option<Signature<C>>,
 ) -> Result<(), ProtocolError> {
-    // check that only the parties that are new can send none and the others do not!
+    // if participant did not send anything but he is actually an old participant
     if proof_of_knowledge.is_none() {
+        // if basic dkg or participant is old
         if old_participants.is_none() || old_participants.unwrap().contains(participant) {
             return Err(ProtocolError::MaliciousParticipant(participant));
         }
+        // since previous line did not abort, then we know participant is new indeed
+        // check the commitment length is threshold - 1
+        if commitment.coefficients().len() != threshold - 1{
+            return Err(ProtocolError::IncorrectNumberOfCommitments);
+        }
+        // nothing to verify
+        return Ok(())
     } else {
-        // check that new participants have indeed sent none!
+        // if participant sent something but he is actually a new participant
         if old_participants.is_some() && !old_participants.unwrap().contains(participant) {
             return Err(ProtocolError::MaliciousParticipant(participant));
         }
+        // since the previous did not abort, we know the participant is old or we are dealing with a dkg
+        if commitment.coefficients().len() != threshold {
+            return Err(ProtocolError::IncorrectNumberOfCommitments);
+        };
     };
 
     // now we know the proof is not none
@@ -175,6 +191,25 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
     let id = Identifier::new(id).unwrap();
     frost_core::keys::dkg::verify_proof_of_knowledge(id, commitment, &proof_of_knowledge)
         .map_err(|_| ProtocolError::InvalidProofOfKnowledge(participant))
+}
+
+/// This function is called when the commitment length is threshold -1
+/// i.e. when the new participant sent a polynomial with a non-existant constant term
+/// such a participant would do so as the identity is not serializable
+fn possible_insert_identity <C: Ciphersuite>(
+    threshold: usize,
+    commitment_i: &VerifiableSecretSharingCommitment<C>,
+) -> VerifiableSecretSharingCommitment<C> {
+        // in case the participant was new and it sent a polynomial of length
+        // threshold -1 (because the zero term is not serializable)
+        let mut commitment_i = commitment_i.clone();
+        let mut coefficients_i = commitment_i.coefficients().to_vec();
+        if coefficients_i.len() == threshold-1{
+            let identity = CoefficientCommitment::new(<C::Group as Group>::identity());
+            coefficients_i.insert(0, identity);
+            commitment_i = VerifiableSecretSharingCommitment::new(coefficients_i);
+        }
+        commitment_i
 }
 
 // evaluates a polynomial on the identifier of the participant
@@ -295,6 +330,8 @@ async fn broadcast_success_failure(
     }
 }
 
+
+/// Performs the heart of DKG, Reshare and Refresh protocols
 async fn do_keyshare<C: Ciphersuite>(
     mut chan: SharedChannel,
     participants: ParticipantList,
@@ -314,6 +351,8 @@ async fn do_keyshare<C: Ciphersuite>(
     // Start Round 1
     // generate your secret polynomial p with the constant term set to the secret
     // and the rest of the coefficients are picked at random
+    // because the library does not allow serializing the zero and identity term,
+    // this function does not add the zero coefficient
     let secret_coefficients = generate_secret_polynomial::<C>(secret, threshold, &mut rng);
 
     // Compute the multiplication of every coefficient of p with the generator G
@@ -345,24 +384,25 @@ async fn do_keyshare<C: Ciphersuite>(
         (commitment, proof_of_knowledge),
     )
     .await?;
-    todo!("The identity cannot be serialized! do something about it");
 
     // Start Round 2
     let wait_round2 = chan.next_waitpoint();
     for p in participants.others(me) {
         let (commitment_i, proof_i) = commitments_and_proofs_map.index(p);
-        if commitment_i.coefficients().len() != threshold {
-            return Err(ProtocolError::IncorrectNumberOfCommitments);
-        };
 
         // verify the proof of knowledge
         // if proof is none then make sure the participant is new
         // and performing a resharing not a DKG
-        verify_proof_of_knowledge(p, old_participants.clone(), commitment_i, proof_i)?;
+        verify_proof_of_knowledge(threshold, p, old_participants.clone(), commitment_i, proof_i)?;
+
+        // in case the participant was new and it sent a polynomial of length
+        // threshold -1 (because the zero term is not serializable)
+        let commitment_i = possible_insert_identity(threshold, commitment_i);
 
         // add received commitment and proof to the map
-        all_commitments.put(p, commitment_i.clone());
+        all_commitments.put(p, commitment_i);
         all_proofs.put(p, proof_i.clone());
+
 
         // Securely send to each other participant a secret share
         // using the evaluation secret polynomial on the identifier of the recipient
@@ -529,11 +569,10 @@ pub async fn do_reshare<C: Ciphersuite>(
     // prepare the random number generator
     let rng = OsRng;
 
+    let intersection = old_participants.intersection(&participants);
     // either extract the share and linearize it or set it to zero
-    // TODO: compute_lagrange_coefficient in libs
-    todo!("change the function lagrange into another one supported by frost library");
     let secret = old_signing_key
-        .map(|x_i| old_participants.lagrange::<C>(me) * x_i.to_scalar())
+        .map(|x_i| intersection.generic_lagrange::<C>(me) * x_i.to_scalar())
         .unwrap_or(<C::Group as Group>::Field::zero());
 
     let old_reshare_package = Some((old_public_key, old_participants));
