@@ -107,7 +107,7 @@ impl ParticipantList {
     /// Use generic frost library types
     pub fn generic_lagrange<C: Ciphersuite>(&self, p: Participant) -> Scalar<C> {
         use frost_core::Field;
-        let p_scalar = p.generic_scalar::<C>().unwrap();
+        let p_scalar = p.generic_scalar::<C>();
 
         let mut top = <C::Group as Group>::Field::one();
         let mut bot = <C::Group as Group>::Field::one();
@@ -115,7 +115,7 @@ impl ParticipantList {
             if p == *q {
                 continue;
             }
-            let q_scalar = q.generic_scalar::<C>().unwrap();
+            let q_scalar = q.generic_scalar::<C>();
             top = top* q_scalar;
             bot = bot*(q_scalar - p_scalar);
         }

@@ -115,20 +115,17 @@ impl Participant {
 
     /// Return the scalar associated with this participant.
     /// The implementation follows the original frost library
-    pub fn generic_scalar<C: Ciphersuite>(&self) -> Result<Scalar<C>, ProtocolError> {
-        let bytes = self.0.to_le_bytes();
+    pub fn generic_scalar<C: Ciphersuite>(&self) -> Scalar<C> {
+        let mut bytes = vec![0u8; 32];
+        bytes[..4].copy_from_slice(&self.0.to_le_bytes());
         // transform the bytes into a scalar and fails if Scalar
         // is not in the range [0, order - 1]
         let scalar = match SerializableScalar::<C>::deserialize(&bytes) {
             Ok(serialization) => serialization.0,
-            _ => {
-                return Err(ProtocolError::AssertionFailed(format!(
-                    "Party {self:?} couldn't transform its id to a scalar"
-                )))
-            }
+            Err(e) => <<C::Group as Group>::Field as Field>::zero()
         };
         // We prevent having the scalar be zero
-        Ok(scalar + <<C::Group as Group>::Field as Field>::one())
+        scalar + <<C::Group as Group>::Field as Field>::one()
     }
 }
 

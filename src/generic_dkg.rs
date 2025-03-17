@@ -116,7 +116,7 @@ fn proof_of_knowledge<C: Ciphersuite>(
     rng: &mut OsRng,
 ) -> Result<Signature<C>, ProtocolError> {
     // creates an identifier for the participant
-    let id = me.generic_scalar::<C>()?;
+    let id = me.generic_scalar::<C>();
     let vk_share = coefficient_commitment[0];
 
     // pick a random k_i and compute R_id = g^{k_id},
@@ -185,7 +185,7 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
 
     // now we know the proof is not none
     let proof_of_knowledge = proof_of_knowledge.unwrap();
-    let id = participant.generic_scalar::<C>()?;
+    let id = participant.generic_scalar::<C>();
     // creating an identifier as required by the syntax of verify_proof_of_knowledge of frost_core
     // cannot panic as the previous line ensures id is neq zero
     let id = Identifier::new(id).unwrap();
@@ -217,7 +217,7 @@ fn evaluate_polynomial<C: Ciphersuite>(
     coefficients: &Vec<Scalar<C>>,
     participant: Participant,
 ) -> Result<SigningShare<C>, ProtocolError> {
-    let id = participant.generic_scalar::<C>()?;
+    let id = participant.generic_scalar::<C>();
     // cannot panic as the previous line ensures id is neq zero
     let id = Identifier::new(id).unwrap();
     Ok(SigningShare::from_coefficients(&coefficients[..], id))
@@ -231,7 +231,7 @@ fn validate_received_share<C: Ciphersuite>(
     signing_share_from: &SigningShare<C>,
     commitment: &VerifiableSecretSharingCommitment<C>,
 ) -> Result<(), ProtocolError> {
-    let id = me.generic_scalar::<C>()?;
+    let id = me.generic_scalar::<C>();
     // cannot panic as the previous line ensures id is neq zero
     let id = Identifier::new(id).unwrap();
 
@@ -497,7 +497,7 @@ pub struct KeygenOutput<C: Ciphersuite> {
     pub public_key: VerifyingKey<C>,
 }
 
-pub async fn do_keygen<C: Ciphersuite>(
+pub (crate) async fn do_keygen<C: Ciphersuite>(
     chan: SharedChannel,
     participants: ParticipantList,
     me: Participant,
@@ -515,7 +515,7 @@ pub async fn do_keygen<C: Ciphersuite>(
     })
 }
 
-pub fn keygen_assertions<C: Ciphersuite>(
+pub (crate) fn keygen_assertions<C: Ciphersuite>(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
@@ -547,17 +547,10 @@ pub fn keygen_assertions<C: Ciphersuite>(
         ));
     };
     Ok(participants)
-
-    // TODO: during instantiations
-    // let ctx = Context::new();
-    // let output = do_keygen::<C Instantiated Curve>(ctx.shared_channel(), participants, me, threshold).await?;
-    // Ok((ctx, output))
-    // Make Protocol only works when instanciating the Ciphersuite C
-    // Ok(make_protocol(ctx, fut))
 }
 
 /// reshares the keyshares between the parties and allows changing the threshold
-pub async fn do_reshare<C: Ciphersuite>(
+pub (crate) async fn do_reshare<C: Ciphersuite>(
     chan: SharedChannel,
     participants: ParticipantList,
     me: Participant,
@@ -594,7 +587,7 @@ pub async fn do_reshare<C: Ciphersuite>(
     })
 }
 
-pub fn reshare_assertions<C: Ciphersuite>(
+pub (crate) fn reshare_assertions<C: Ciphersuite>(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
