@@ -3,16 +3,16 @@ use frost_ed25519::*;
 use crate::generic_dkg::*;
 use crate::protocol::internal::{make_protocol, Context};
 use crate::protocol::{InitializationError, Protocol, Participant};
+use crate::frost::KeygenOutput;
 
 type E = Ed25519Sha512;
-type Output = KeygenOutput<E>;
 
 /// Performs the Ed25519 DKG protocol
 pub fn keygen(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
-) -> Result<impl Protocol<Output = Output>, InitializationError> {
+) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let participants = keygen_assertions::<E>(participants, me, threshold)?;
     let fut = do_keygen(ctx.shared_channel(), participants, me, threshold);
@@ -28,7 +28,7 @@ pub fn reshare(
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
-) -> Result<impl Protocol<Output = Output>, InitializationError> {
+) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let threshold = new_threshold;
     let (participants,old_participants) = reshare_assertions::<E>(new_participants, me, threshold, old_signing_key, old_threshold, old_participants)?;
@@ -43,7 +43,7 @@ pub fn refresh(
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
-) -> Result<impl Protocol<Output = Output>, InitializationError> {
+) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     if old_signing_key.is_none(){
         return Err(InitializationError::BadParameters(format!(
             "The participant {me:?} is running refresh without an old share",
@@ -69,10 +69,10 @@ mod test {
     fn run_keygen(
         participants: &[Participant],
         threshold: usize,
-    ) -> Result<Vec<(Participant, KeygenOutput<E>)>, Box<dyn Error>> {
+    ) -> Result<Vec<(Participant, KeygenOutput)>, Box<dyn Error>> {
         let mut protocols: Vec<(
             Participant,
-            Box<dyn Protocol<Output = KeygenOutput<E>>>,
+            Box<dyn Protocol<Output = KeygenOutput>>,
         )> = Vec::with_capacity(participants.len());
 
         for p in participants.iter() {
@@ -128,7 +128,7 @@ mod test {
         let pub_key = result0[2].1.public_key.to_element();
 
         // Refresh
-        let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = Output>>)> =
+        let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
             Vec::with_capacity(participants.len());
 
         for (p, out) in result0.iter() {
@@ -184,7 +184,7 @@ mod test {
             .collect();
         setup.push((Participant::from(3u32), (None, pub_key)));
 
-        let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = Output>>)> =
+        let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
             Vec::with_capacity(participants.len());
 
         for (p, out) in setup.iter() {
