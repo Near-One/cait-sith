@@ -60,16 +60,33 @@ fn generate_secret_polynomial<C: Ciphersuite>(
     rng: &mut OsRng,
 ) -> Vec<Scalar<C>> {
     let mut coefficients = Vec::new();
-    // insert the secret share the the unique case if it is zero
-    // we simulate the zero share as neither zero scalar
-    // nor identity group element are serializable
-    if secret != <C::Group as Group>::Field::zero(){
-        coefficients.push(secret);
-    }
+    // insert the secret share
+    coefficients.push(secret);
     for _ in 1..threshold {
         coefficients.push(<C::Group as Group>::Field::random(rng));
     }
     coefficients
+}
+
+/// Creates a commitment vector of coefficients * G
+/// If the first coefficient is set to zero then skip it
+fn generate_coefficient_commitment<C: Ciphersuite>
+    (secret_coefficients:&Vec<Scalar<C>>) -> Vec<CoefficientCommitment<C>>{
+
+    // we skip the zero share as neither zero scalar
+    // nor identity group element are serializable
+    let coeff_iter = secret_coefficients
+            .iter()
+            .skip(
+                (secret_coefficients.first() == Some(&<C::Group as Group>::Field::zero())
+            ) as usize);
+
+    // Compute the multiplication of every coefficient of p with the generator G
+    let coefficient_commitment: Vec<CoefficientCommitment<C>> = coeff_iter
+        .map(|c| CoefficientCommitment::new(<C::Group as Group>::generator() * *c))
+        .collect();
+
+    coefficient_commitment
 }
 
 /// Generates the challenge for the proof of knowledge
@@ -330,7 +347,6 @@ async fn broadcast_success_failure(
     }
 }
 
-
 /// Performs the heart of DKG, Reshare and Refresh protocols
 async fn do_keyshare<C: Ciphersuite>(
     mut chan: SharedChannel,
@@ -356,10 +372,7 @@ async fn do_keyshare<C: Ciphersuite>(
     let secret_coefficients = generate_secret_polynomial::<C>(secret, threshold, &mut rng);
 
     // Compute the multiplication of every coefficient of p with the generator G
-    let coefficient_commitment: Vec<CoefficientCommitment<C>> = secret_coefficients
-        .iter()
-        .map(|c| CoefficientCommitment::new(<C::Group as Group>::generator() * *c))
-        .collect();
+    let coefficient_commitment = generate_coefficient_commitment::<C>(&secret_coefficients);
     // generate a proof of knowledge if the participant me is not holding a secret that is zero
     let proof_of_knowledge = compute_proof_of_knowledge(
         me,
@@ -395,14 +408,9 @@ async fn do_keyshare<C: Ciphersuite>(
         // and performing a resharing not a DKG
         verify_proof_of_knowledge(threshold, p, old_participants.clone(), commitment_i, proof_i)?;
 
-        // in case the participant was new and it sent a polynomial of length
-        // threshold -1 (because the zero term is not serializable)
-        let commitment_i = possible_insert_identity(threshold, commitment_i);
-
         // add received commitment and proof to the map
-        all_commitments.put(p, commitment_i);
+        all_commitments.put(p, commitment_i.clone());
         all_proofs.put(p, proof_i.clone());
-
 
         // Securely send to each other participant a secret share
         // using the evaluation secret polynomial on the identifier of the recipient
@@ -411,9 +419,20 @@ async fn do_keyshare<C: Ciphersuite>(
         chan.send_private(wait_round2, p, &signing_share_to_p).await;
     }
 
+    // compute transcript hash
+    let my_transcript =
+    compute_transcript_hash(&participants, threshold, &all_commitments, &all_proofs);
+
     // compute the my secret evaluation of my private polynomial
     let mut my_signing_share = evaluate_polynomial::<C>(&secret_coefficients, me)?.to_scalar();
-    // receive evaluations from all
+
+
+    // recreate the commitments map with the proper commitment sizes = threshold
+    let mut all_full_commitments = ParticipantMap::new(&participants);
+    let my_full_commitment = possible_insert_identity(threshold, all_commitments.index(me));
+    all_full_commitments.put(me, my_full_commitment);
+
+    // receive evaluations from all participants
     let mut seen = ParticipantCounter::new(&participants);
     seen.put(me);
     while !seen.full() {
@@ -425,8 +444,15 @@ async fn do_keyshare<C: Ciphersuite>(
 
         let commitment_from = all_commitments.index(from);
 
+        // in case the participant was new and it sent a polynomial of length
+        // threshold -1 (because the zero term is not serializable)
+        let full_commitment_from = possible_insert_identity(threshold, commitment_from);
+
         // Verify the share
-        validate_received_share::<C>(&me, &from, &signing_share_from, commitment_from)?;
+        validate_received_share::<C>(&me, &from, &signing_share_from, &full_commitment_from)?;
+
+        // add full commitment
+        all_full_commitments.put(from, full_commitment_from);
 
         // Compute the sum of all the owned secret shares
         // At the end of this loop, I will be owning a valid secret signing share
@@ -434,9 +460,7 @@ async fn do_keyshare<C: Ciphersuite>(
     }
 
     // Start Round 3
-    // compute transcript hash
-    let my_transcript =
-        compute_transcript_hash(&participants, threshold, &all_commitments, &all_proofs);
+
     // receive all transcript hashes
     let transcript_list = do_broadcast(&mut chan, &participants, &me, my_transcript).await?;
     let transcript_list = transcript_list.into_vec_or_none().unwrap();
@@ -457,7 +481,7 @@ async fn do_keyshare<C: Ciphersuite>(
     let signing_share = SigningKey::<C>::from_scalar(my_signing_share)
         .map_err(|_| ProtocolError::MalformedSigningKey)?;
     // cannot fail as all_commitments at least contains my commitment
-    let all_commitments_vec = all_commitments.into_vec_or_none().unwrap();
+    let all_commitments_vec = all_full_commitments.into_vec_or_none().unwrap();
     let all_commitments_refs = all_commitments_vec.iter().collect();
 
     // Calculate the public verification key.

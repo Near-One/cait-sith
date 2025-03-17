@@ -122,7 +122,7 @@ impl Participant {
         // is not in the range [0, order - 1]
         let scalar = match SerializableScalar::<C>::deserialize(&bytes) {
             Ok(serialization) => serialization.0,
-            Err(e) => <<C::Group as Group>::Field as Field>::zero()
+            _ => <<C::Group as Group>::Field as Field>::zero()
         };
         // We prevent having the scalar be zero
         scalar + <<C::Group as Group>::Field as Field>::one()
