@@ -14,6 +14,7 @@ ecdsa = { version = "0.16.8", features = ["digest", "hazmat"] }
 elliptic-curve = { version = "0.13.5", features = ["serde"] }
 event-listener = "2.5.3"
 frost-core = { version = "2.1.0", features = ["internals"] }
+frost-ed25519 = "2.1.0"
 futures = "0.3.31"
 k256 = { version = "0.13.1", features = ["sha256", "ecdsa", "serde"], optional = true }
 magikitten = "0.2.0"

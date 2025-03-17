@@ -146,3 +146,5 @@ pub use compat::CSCurve;
 pub use keyshare::{keygen, refresh, reshare, KeygenOutput};
 pub use presign::{presign, PresignArguments, PresignOutput};
 pub use sign::{combine_signature_shares, sign, signature_share, FullSignature};
+
+mod frost;
