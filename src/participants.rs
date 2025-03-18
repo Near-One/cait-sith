@@ -9,7 +9,7 @@ use std::{collections::HashMap, mem, ops::Index};
 use serde::Serialize;
 use frost_core::{Scalar, Group, Ciphersuite};
 
-use crate::{compat::CSCurve, protocol::{Participant, ProtocolError}};
+use crate::{compat::CSCurve, protocol::Participant};
 
 
 /// Represents a sorted list of participants.
@@ -134,6 +134,11 @@ impl ParticipantList {
         }
         // We know that no duplicates will be created, so unwrapping is safe
         Self::new_vec(out).unwrap()
+    }
+
+    // Returns all the participants in the list
+    pub fn participants(&self) -> Vec<Participant>{
+        self.participants.clone()
     }
 }
 
