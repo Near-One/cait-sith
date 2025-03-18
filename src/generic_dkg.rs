@@ -1,21 +1,21 @@
-use rand_core::OsRng;
-use std::ops::Index;
 
 use crate::crypto::{hash, Digest};
 use crate::serde::encode;
+use crate::echo_broadcast::do_broadcast;
+use crate::participants::{ParticipantCounter, ParticipantList, ParticipantMap};
+use crate::protocol::internal::SharedChannel;
+use crate::protocol::{InitializationError, Participant, ProtocolError};
 
+use rand_core::OsRng;
+use std::ops::Index;
 use frost_core::keys::{
-    CoefficientCommitment, SecretShare, SigningShare, VerifiableSecretSharingCommitment,
+    CoefficientCommitment, PublicKeyPackage, SecretShare, SigningShare, VerifiableSecretSharingCommitment,
+    VerifyingShare
 };
 use frost_core::{
     Challenge, Ciphersuite, Element, Error, Field, Group, Scalar, Signature,
     SigningKey, VerifyingKey,
 };
-
-use crate::echo_broadcast::do_broadcast;
-use crate::participants::{ParticipantCounter, ParticipantList, ParticipantMap};
-use crate::protocol::internal::SharedChannel;
-use crate::protocol::{InitializationError, Participant, ProtocolError};
 
 const LABEL: &[u8] = b"Generic DKG";
 
@@ -298,14 +298,23 @@ fn compute_transcript_hash<C: Ciphersuite>(
 }
 
 /// generates a verification key out of a public commited polynomial
-fn verifying_key_from_commitments<C: Ciphersuite>(
+/// generates the verification shares of each participant
+fn public_key_package_from_commitments<C: Ciphersuite>(
+    participants: &ParticipantList,
     commitments: Vec<&VerifiableSecretSharingCommitment<C>>,
-) -> Result<VerifyingKey<C>, ProtocolError> {
-    let group_commitment = frost_core::keys::sum_commitments(&commitments)
+) -> Result<PublicKeyPackage<C>, ProtocolError> {
+    let commitment = frost_core::keys::sum_commitments(&commitments)
         .map_err(|_| ProtocolError::IncorrectNumberOfCommitments)?;
-    let vk = VerifyingKey::from_commitment(&group_commitment)
+
+    let verifying_shares =
+    participants.participants()
+        .iter()
+        .map(|p| (p.to_identifier(), VerifyingShare::from_commitment(p.to_identifier(), &commitment)))
+        .collect();
+
+    let vk = VerifyingKey::from_commitment(&commitment)
         .map_err(|_| ProtocolError::ErrorExtractVerificationKey)?;
-    Ok(vk)
+    Ok(PublicKeyPackage::new(verifying_shares, vk))
 }
 
 async fn broadcast_success_failure(
@@ -350,7 +359,7 @@ async fn do_keyshare<C: Ciphersuite>(
     secret: Scalar<C>,
     old_reshare_package: Option<(VerifyingKey<C>, ParticipantList)>,
     mut rng: OsRng,
-) -> Result<(SigningKey<C>, VerifyingKey<C>), ProtocolError> {
+) -> Result<(SigningKey<C>, PublicKeyPackage<C>), ProtocolError> {
     let mut all_commitments = ParticipantMap::new(&participants);
     let mut all_proofs = ParticipantMap::new(&participants);
 
@@ -479,19 +488,20 @@ async fn do_keyshare<C: Ciphersuite>(
     let all_commitments_refs = all_commitments_vec.iter().collect();
 
     // Calculate the public verification key.
-    let verifying_key = match verifying_key_from_commitments(all_commitments_refs) {
-        Ok(vk) => Some(vk),
-        Err(e) => {
-            err = Some(e);
-            None
-        }
-    };
+    let public_key_package =
+        match public_key_package_from_commitments(&participants, all_commitments_refs) {
+            Ok(vk) => Some(vk),
+            Err(e) => {
+                err = Some(e);
+                None
+            }
+        };
 
     // In the case of Resharing, check if the old public key is the same as the new one
     if let Some(vk) = old_verification_key {
-        if verifying_key.is_some() {
+        if let Some(pk) = public_key_package.clone() {
             // check the equality between the old key and the new key without failing the unwrap
-            if vk != verifying_key.unwrap() {
+            if vk != *pk.verifying_key() {
                 err = Some(ProtocolError::AssertionFailed(format!(
                     "new public key does not match old public key"
                 )));
@@ -502,8 +512,11 @@ async fn do_keyshare<C: Ciphersuite>(
     // Start Round 4
     broadcast_success_failure(&mut chan, &participants, &me, err).await?;
 
+    // will never panic as broadcast_success_failure would panic before it
+    let public_key_package = public_key_package.unwrap();
+
     // unwrap cannot fail as round 4 ensures failing if verification_key is None
-    return Ok((signing_share, verifying_key.unwrap()));
+    return Ok((signing_share, public_key_package));
 }
 
 /// Represents the output of the key generation protocol.
@@ -512,7 +525,7 @@ async fn do_keyshare<C: Ciphersuite>(
 #[derive(Debug, Clone)]
 pub struct KeygenOutput<C: Ciphersuite> {
     pub private_share: SigningKey<C>,
-    pub public_key: VerifyingKey<C>,
+    pub public_key_package: PublicKeyPackage<C>,
 }
 
 pub (crate) async fn do_keygen<C: Ciphersuite>(
@@ -525,11 +538,11 @@ pub (crate) async fn do_keygen<C: Ciphersuite>(
     let mut rng = OsRng;
     let secret = SigningKey::<C>::new(&mut rng).to_scalar();
     // call keyshare
-    let (private_share, public_key) =
+    let (private_share, public_key_package) =
         do_keyshare::<C>(chan, participants, me, threshold, secret, None, rng).await?;
     Ok(KeygenOutput {
         private_share,
-        public_key,
+        public_key_package,
     })
 }
 
@@ -588,7 +601,7 @@ pub (crate) async fn do_reshare<C: Ciphersuite>(
 
     let old_reshare_package = Some((old_public_key, old_participants));
     // call keyshare
-    let (private_share, public_key) = do_keyshare::<C>(
+    let (private_share, public_key_package) = do_keyshare::<C>(
         chan,
         participants,
         me,
@@ -601,7 +614,7 @@ pub (crate) async fn do_reshare<C: Ciphersuite>(
 
     Ok(KeygenOutput {
         private_share,
-        public_key,
+        public_key_package,
     })
 }
 

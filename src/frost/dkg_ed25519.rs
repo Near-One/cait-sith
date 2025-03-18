@@ -1,4 +1,5 @@
 use frost_ed25519::*;
+use keys::PublicKeyPackage;
 
 use crate::generic_dkg::*;
 use crate::protocol::internal::{make_protocol, Context};
@@ -24,13 +25,14 @@ pub fn reshare(
     old_participants: &[Participant],
     old_threshold: usize,
     old_signing_key: Option<SigningKey>,
-    old_public_key: VerifyingKey,
+    old_public_key: PublicKeyPackage,
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let threshold = new_threshold;
+    let old_public_key = old_public_key.verifying_key().clone();
     let (participants,old_participants) = reshare_assertions::<E>(new_participants, me, threshold, old_signing_key, old_threshold, old_participants)?;
     let fut = do_reshare(ctx.shared_channel(), participants, me, threshold, old_signing_key, old_public_key, old_participants);
     Ok(make_protocol(ctx, fut))
@@ -39,7 +41,7 @@ pub fn reshare(
 /// Performs the Ed25519 Refresh protocol
 pub fn refresh(
     old_signing_key: Option<SigningKey>,
-    old_public_key: VerifyingKey,
+    old_public_key: PublicKeyPackage,
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
@@ -51,6 +53,7 @@ pub fn refresh(
     }
     let ctx = Context::new();
     let threshold = new_threshold;
+    let old_public_key = old_public_key.verifying_key().clone();
     let (participants,old_participants) = reshare_assertions::<E>(new_participants, me, threshold, old_signing_key, threshold, new_participants)?;
     let fut = do_reshare(ctx.shared_channel(), participants, me, threshold, old_signing_key, old_public_key, old_participants);
     Ok(make_protocol(ctx, fut))
@@ -95,10 +98,10 @@ mod test {
 
         let result = run_keygen(&participants, threshold)?;
         assert!(result.len() == participants.len());
-        assert_eq!(result[0].1.public_key, result[1].1.public_key);
-        assert_eq!(result[1].1.public_key, result[2].1.public_key);
+        assert_eq!(result[0].1.public_key_package, result[1].1.public_key_package);
+        assert_eq!(result[1].1.public_key_package, result[2].1.public_key_package);
 
-        let pub_key = result[2].1.public_key.to_element();
+        let pub_key = result[2].1.public_key_package.verifying_key().to_element();
 
         let participants = vec![result[0].0, result[1].0, result[2].0];
         let shares = vec![
@@ -125,7 +128,7 @@ mod test {
 
         let result0 = run_keygen(&participants, threshold)?;
 
-        let pub_key = result0[2].1.public_key.to_element();
+        let pub_key = result0[2].1.public_key_package.verifying_key().to_element();
 
         // Refresh
         let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
@@ -134,7 +137,7 @@ mod test {
         for (p, out) in result0.iter() {
             let protocol = refresh(
                 Some(out.private_share),
-                out.public_key,
+                out.public_key_package.clone(),
                 &participants,
                 threshold,
                 *p,
@@ -175,14 +178,14 @@ mod test {
 
         let result0 = run_keygen(&participants[..3], threshold0)?;
 
-        let pub_key = result0[2].1.public_key;
+        let pub_key = result0[2].1.public_key_package.clone();
 
         // Reshare
         let mut setup: Vec<_> = result0
             .into_iter()
-            .map(|(p, out)| (p, (Some(out.private_share), out.public_key)))
+            .map(|(p, out)| (p, (Some(out.private_share), out.public_key_package)))
             .collect();
-        setup.push((Participant::from(3u32), (None, pub_key)));
+        setup.push((Participant::from(3u32), (None, pub_key.clone())));
 
         let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
             Vec::with_capacity(participants.len());
@@ -192,7 +195,7 @@ mod test {
                 &participants[..3],
                 threshold0,
                 out.0,
-                out.1,
+                out.1.clone(),
                 &participants,
                 threshold1,
                 *p,
@@ -219,7 +222,7 @@ mod test {
             + p_list.generic_lagrange::<E>(participants[1]) * shares[1]
             + p_list.generic_lagrange::<E>(participants[2]) * shares[2]
             + p_list.generic_lagrange::<E>(participants[3]) * shares[3];
-        assert_eq!(<Ed25519Group>::generator() * x, pub_key.to_element());
+        assert_eq!(<Ed25519Group>::generator() * x, pub_key.verifying_key().to_element());
 
         Ok(())
     }
