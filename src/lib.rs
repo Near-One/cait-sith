@@ -119,18 +119,11 @@ mod compat;
 mod constants;
 mod crypto;
 
-#[cfg(feature = "internals")]
-pub mod echo_broadcast;
-#[cfg(not(feature = "internals"))]
 mod echo_broadcast;
 
 mod generic_dkg;
 mod keyshare;
 mod math;
-
-#[cfg(feature = "internals")]
-pub mod participants;
-#[cfg(not(feature = "internals"))]
 mod participants;
 
 mod presign;
