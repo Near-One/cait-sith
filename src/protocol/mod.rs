@@ -11,7 +11,7 @@ use crate::compat::CSCurve;
 use ::serde::{Deserialize, Serialize};
 
 use frost_core::serialization::SerializableScalar;
-use frost_core::{Ciphersuite, Field, Group, Scalar};
+use frost_core::{Ciphersuite, Field, Group, Identifier, Scalar};
 
 /// Represents an error which can happen when running a protocol.
 #[derive(Debug)]
@@ -126,6 +126,14 @@ impl Participant {
         };
         // We prevent having the scalar be zero
         scalar + <<C::Group as Group>::Field as Field>::one()
+    }
+
+    /// Returns a Frost identifier used in the frost library
+    pub fn to_identifier<C: Ciphersuite>(&self) -> Identifier<C>{
+        let id = self.generic_scalar::<C>();
+        // creating an identifier as required by the syntax of frost_core
+        // cannot panic as the previous line ensures id is neq zero
+        Identifier::new(id).unwrap()
     }
 }
 
