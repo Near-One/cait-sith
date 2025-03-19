@@ -197,7 +197,7 @@ async fn do_sign_participant(
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
 pub fn sign_coordinator(
-    participants: Vec<Participant>,
+    participants: &[Participant],
     threshold: usize,
     me: Participant,
     keygen_output: KeygenOutput,
@@ -244,7 +244,7 @@ pub fn sign_coordinator(
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
 pub fn sign_participant(
-    participants: Vec<Participant>,
+    participants: &[Participant],
     threshold: usize,
     me: Participant,
     keygen_output: KeygenOutput,
@@ -281,63 +281,63 @@ pub fn sign_participant(
     Ok(make_protocol(ctx, fut))
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::frost::test::{
-//         build_and_run_signature_protocols, build_key_packages_with_dealer, SignatureOutput,
-//     };
-//     use crate::protocol::Participant;
+#[cfg(test)]
+mod tests {
+    use crate::frost::test::{
+        run_signature_protocols, build_key_packages_with_dealer, SignatureOutput,
+    };
+    use crate::protocol::Participant;
 
-//     fn assert_single_coordinator_result(data: Vec<(Participant, SignatureOutput)>) {
-//         let count = data
-//             .iter()
-//             .filter(|(_, output)| match output {
-//                 SignatureOutput::Coordinator(_) => true,
-//                 SignatureOutput::Participant => false,
-//             })
-//             .count();
-//         assert_eq!(count, 1);
-//     }
+    fn assert_single_coordinator_result(data: Vec<(Participant, SignatureOutput)>) {
+        let count = data
+            .iter()
+            .filter(|(_, output)| match output {
+                SignatureOutput::Coordinator(_) => true,
+                SignatureOutput::Participant => false,
+            })
+            .count();
+        assert_eq!(count, 1);
+    }
 
-//     #[test]
-//     fn basic_two_participants() {
-//         let max_signers = 2;
-//         let min_signers = 2;
-//         let actual_signers = 2;
-//         let coordinators = 1;
+    #[test]
+    fn basic_two_participants() {
+        let max_signers = 2;
+        let min_signers = 2;
+        let actual_signers = 2;
+        let coordinators = 1;
 
-//         let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
-//         let data =
-//             build_and_run_signature_protocols(&key_packages, actual_signers, coordinators).unwrap();
-//         assert_single_coordinator_result(data);
-//     }
+        let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
+        let data =
+        run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers).unwrap();
+        assert_single_coordinator_result(data);
+    }
 
-//     #[test]
-//     #[should_panic]
-//     fn multiple_coordinators() {
-//         let max_signers = 3;
-//         let min_signers = 2;
-//         let actual_signers = 2;
-//         let coordinators = 2;
+    #[test]
+    #[should_panic]
+    fn multiple_coordinators() {
+        let max_signers = 3;
+        let min_signers = 2;
+        let actual_signers = 2;
+        let coordinators = 2;
 
-//         let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
-//         let data =
-//             build_and_run_signature_protocols(&key_packages, actual_signers, coordinators).unwrap();
-//         assert_single_coordinator_result(data);
-//     }
+        let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
+        let data =
+        run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers).unwrap();
+        assert_single_coordinator_result(data);
+    }
 
-//     #[test]
-//     fn stress() {
-//         let max_signers = 7;
-//         let coordinators = 1;
-//         for min_signers in 2..max_signers {
-//             for actual_signers in min_signers..=max_signers {
-//                 let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
-//                 let data =
-//                     build_and_run_signature_protocols(&key_packages, actual_signers, coordinators)
-//                         .unwrap();
-//                 assert_single_coordinator_result(data);
-//             }
-//         }
-//     }
-// }
+    #[test]
+    fn stress() {
+        let max_signers = 7;
+        let coordinators = 1;
+        for min_signers in 2..max_signers {
+            for actual_signers in min_signers..=max_signers {
+                let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
+                let data =
+                run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers)
+                        .unwrap();
+                assert_single_coordinator_result(data);
+            }
+        }
+    }
+}
