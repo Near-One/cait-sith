@@ -106,24 +106,35 @@ pub(crate) fn run_reshare(
     keys: Vec<(Participant, KeygenOutput)>,
     old_threshold: usize,
     new_threshold: usize,
+    new_participants: Vec<Participant>,
 ) -> Result<Vec<(Participant, KeygenOutput)>, Box<dyn Error>> {
-    let mut setup: Vec<_> = keys
-            .into_iter()
-            .map(|(p, out)| (p, (Some(out.private_share), out.public_key_package)))
-            .collect();
-        setup.push((Participant::from(3u32), (None, pub_key.clone())));
+    assert!(new_participants.len() > 0);
+    let mut setup: Vec<_> = vec![];
 
+    for new_participant in &new_participants{
+        let mut is_break = false;
+        for (p,k) in &keys {
+            if p.clone() == new_participant.clone() {
+                setup.push((p.clone(), (Some(k.private_share.clone()), k.public_key_package.clone())));
+                is_break = true;
+                break;
+            }
+        }
+        if !is_break{
+            setup.push((new_participant.clone(), (None, pub_key.clone())));
+        }
+    }
 
     let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
     Vec::with_capacity(participants.len());
 
     for (p, out) in setup.iter() {
         let protocol = reshare(
-            &participants[..3],
+            &participants,
             old_threshold,
             out.0,
             out.1.clone(),
-            &participants,
+            &new_participants,
             new_threshold,
             *p,
         )?;

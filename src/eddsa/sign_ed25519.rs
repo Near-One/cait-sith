@@ -292,6 +292,7 @@ mod tests {
         run_keygen,
         run_refresh,
         run_reshare,
+        assert_public_key_invariant,
     };
     use crate::protocol::Participant;
     use std::error::Error;
@@ -366,7 +367,7 @@ mod tests {
     -> Result<(), Box<dyn Error>>{
         let mut participants = vec![
             Participant::from(0u32),
-            Participant::from(3u32),
+            Participant::from(31u32),
             Participant::from(1u32),
             Participant::from(2u32),
         ];
@@ -378,6 +379,7 @@ mod tests {
 
         // test dkg
         let key_packages = run_keygen(&participants, threshold)?;
+        assert_public_key_invariant(&key_packages)?;
         let data =
             run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash)
             .unwrap();
@@ -388,8 +390,9 @@ mod tests {
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
 
-        // test refresh
+        // // test refresh
         let key_packages1 = run_refresh(&participants, key_packages, threshold)?;
+        assert_public_key_invariant(&key_packages1)?;
         let msg = "hello_near_2";
         let msg_hash = hash(&msg);
         let data =
@@ -404,9 +407,11 @@ mod tests {
 
 
         // test reshare
-        participants.push(Participant::from(20u32));
+        let mut new_participant = participants.clone();
+        new_participant.push(Participant::from(20u32));
         let new_threshold = 4;
-        let key_packages2 = run_reshare(&participants, &pub_key, key_packages1, threshold, new_threshold)?;
+        let key_packages2 = run_reshare(&participants, &pub_key, key_packages1, threshold, new_threshold, new_participant)?;
+        assert_public_key_invariant(&key_packages2)?;
         let msg = "hello_near_3";
         let msg_hash = hash(&msg);
         let data =

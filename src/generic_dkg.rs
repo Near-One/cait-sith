@@ -574,7 +574,7 @@ pub (crate) fn keygen_assertions<C: Ciphersuite>(
     // ensure my presence in the participant list
     if !participants.contains(me) {
         return Err(InitializationError::BadParameters(
-            "participant list must contain this participant".to_string(),
+            format!("participant list must contain {me:?}").to_string(),
         ));
     };
     Ok(participants)
@@ -634,7 +634,7 @@ pub (crate) fn reshare_assertions<C: Ciphersuite>(
     };
     if threshold > participants.len() {
         return Err(InitializationError::BadParameters(
-            "threshold must be <= participant count".to_string(),
+            format!("new threshold {threshold:?} must be <= participant count {}", participants.len()).to_string(),
         ));
     }
 
@@ -646,7 +646,7 @@ pub (crate) fn reshare_assertions<C: Ciphersuite>(
 
     if !participants.contains(me) {
         return Err(InitializationError::BadParameters(
-            "new participant list must contain this participant".to_string(),
+            format!("participant list must contain {me:?}").to_string(),
         ));
     }
 
@@ -658,7 +658,9 @@ pub (crate) fn reshare_assertions<C: Ciphersuite>(
 
     if old_participants.intersection(&participants).len() < old_threshold {
         return Err(InitializationError::BadParameters(
-            "not enough old participants to reconstruct private key for resharing".to_string(),
+            format!("not enough intersecting old/new participants {:?} to reconstruct private key for resharing with threshold bigger than old threshold {}",
+            old_participants.intersection(&participants),
+            old_threshold).to_string(),
         ));
     }
     // if me is not in the old participant set then ensure that old_signing_key is None

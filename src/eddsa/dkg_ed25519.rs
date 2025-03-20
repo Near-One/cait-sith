@@ -78,7 +78,7 @@ mod test {
     #[test]
     fn test_keygen() -> Result<(), Box<dyn Error>> {
         let participants = vec![
-            Participant::from(3u32),
+            Participant::from(31u32),
             Participant::from(1u32),
             Participant::from(2u32),
         ];
@@ -111,7 +111,7 @@ mod test {
     fn test_refresh() -> Result<(), Box<dyn Error>> {
         let participants = vec![
             Participant::from(0u32),
-            Participant::from(1u32),
+            Participant::from(31u32),
             Participant::from(2u32),
         ];
         let threshold = 3;
@@ -148,17 +148,18 @@ mod test {
             Participant::from(0u32),
             Participant::from(1u32),
             Participant::from(2u32),
-            Participant::from(3u32),
         ];
-        let threshold0 = 3;
-        let threshold1 = 4;
+        let threshold0 = 2;
+        let threshold1 = 3;
 
-        let result0 = run_keygen(&participants[..3], threshold0)?;
+        let result0 = run_keygen(&participants, threshold0)?;
         assert_public_key_invariant(&result0)?;
 
         let pub_key = result0[2].1.public_key_package.clone();
 
-        let result1 = run_reshare(&participants, &pub_key, result0, threshold0, threshold1)?;
+        let mut new_participant = participants.clone();
+        new_participant.push(Participant::from(31u32));
+        let result1 = run_reshare(&participants, &pub_key, result0, threshold0, threshold1, new_participant)?;
         assert_public_key_invariant(&result1)?;
 
         let participants = vec![
