@@ -7,7 +7,7 @@ use crate::triples::multiplication::multiplication_many;
 use crate::{
     compat::{CSCurve, SerializablePoint},
     crypto::{commit, hash, Digest},
-    math::{GroupPolynomial, Polynomial},
+    ecdsa::math::{GroupPolynomial, Polynomial},
     participants::{ParticipantCounter, ParticipantList, ParticipantMap},
     proofs::{dlog, dlogeq},
     protocol::{

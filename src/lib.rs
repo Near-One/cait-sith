@@ -122,23 +122,16 @@ mod crypto;
 mod echo_broadcast;
 
 mod generic_dkg;
-mod keyshare;
-mod math;
 mod participants;
 
-mod presign;
 mod proofs;
 pub mod protocol;
 mod serde;
-mod sign;
-#[cfg(test)]
-mod test;
-pub mod triples;
 
 pub use compat::CSCurve;
-// pub use keyshare::{keygen, refresh, reshare, KeygenOutput};
-pub use presign::{presign, PresignArguments, PresignOutput};
-pub use sign::{combine_signature_shares, sign, signature_share, FullSignature};
 
-mod eddsa;
-mod ecdsa;
+pub mod eddsa;
+pub mod ecdsa;
+pub mod triples;
+pub use ecdsa::presign::{presign, PresignArguments, PresignOutput};
+pub use ecdsa::sign::{combine_signature_shares, sign, signature_share, FullSignature};
