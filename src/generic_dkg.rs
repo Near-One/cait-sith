@@ -664,7 +664,7 @@ pub (crate) fn reshare_assertions<C: Ciphersuite>(
     // if me is not in the old participant set then ensure that old_signing_key is None
     if old_participants.contains(me) && old_signing_key.is_none() {
         return Err(InitializationError::BadParameters(
-            "this party is present in the old participant list but provided no share".to_string(),
+            format!("party {me:?} is present in the old participant list but provided no share").to_string(),
         ));
     }
     Ok((participants, old_participants))

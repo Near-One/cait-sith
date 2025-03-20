@@ -286,8 +286,12 @@ mod tests {
     use crate::crypto::hash;
 
     use crate::eddsa::test::{
-        run_signature_protocols, build_key_packages_with_dealer, IsSignature,
-        run_keygen
+        run_signature_protocols,
+        build_key_packages_with_dealer,
+        IsSignature,
+        run_keygen,
+        run_refresh,
+        run_reshare,
     };
     use crate::protocol::Participant;
     use std::error::Error;
@@ -360,7 +364,8 @@ mod tests {
     #[test]
     fn dkg_sign_test()
     -> Result<(), Box<dyn Error>>{
-        let participants = vec![
+        let mut participants = vec![
+            Participant::from(0u32),
             Participant::from(3u32),
             Participant::from(1u32),
             Participant::from(2u32),
@@ -371,6 +376,7 @@ mod tests {
         let msg = "hello_near";
         let msg_hash = hash(&msg);
 
+        // test dkg
         let key_packages = run_keygen(&participants, threshold)?;
         let data =
             run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash)
@@ -381,6 +387,38 @@ mod tests {
             .verifying_key()
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
+
+        // test refresh
+        let key_packages1 = run_refresh(&participants, key_packages, threshold)?;
+        let msg = "hello_near_2";
+        let msg_hash = hash(&msg);
+        let data =
+        run_signature_protocols(&key_packages1, actual_signers, coordinators, threshold, msg_hash)
+        .unwrap();
+        let signature = assert_single_coordinator_result(data);
+        let pub_key = key_packages1[2].1.public_key_package.clone();
+        assert!(key_packages1[0].1.public_key_package
+            .verifying_key()
+            .verify(msg_hash.as_ref(), &signature)
+            .is_ok());
+
+
+        // test reshare
+        participants.push(Participant::from(20u32));
+        let new_threshold = 4;
+        let key_packages2 = run_reshare(&participants, &pub_key, key_packages1, threshold, new_threshold)?;
+        let msg = "hello_near_3";
+        let msg_hash = hash(&msg);
+        let data =
+        run_signature_protocols(&key_packages2, actual_signers, coordinators, threshold, msg_hash)
+        .unwrap();
+        let signature = assert_single_coordinator_result(data);
+        assert!(key_packages2[0].1.public_key_package
+            .verifying_key()
+            .verify(msg_hash.as_ref(), &signature)
+            .is_ok());
+
+
         Ok(())
     }
 }
