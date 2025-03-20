@@ -3,8 +3,9 @@ use crate::participants::ParticipantList;
 use crate::protocol::{run_protocol, Participant, Protocol, ProtocolError};
 use crate::protocol::internal::{make_protocol, Context, SharedChannel};
 use crate::eddsa::sign_ed25519::{do_sign_participant, do_sign_coordinator};
+use crate::eddsa::dkg_ed25519::{keygen, reshare, refresh};
 
-use frost_ed25519::keys::VerifyingShare;
+use frost_ed25519::keys::{PublicKeyPackage, VerifyingShare};
 use frost_ed25519::{Ed25519Sha512, Group, Field, Signature, SigningKey};
 use rand_core::{OsRng, RngCore};
 use std::error::Error;
@@ -13,6 +14,7 @@ use itertools::Itertools;
 use crate::crypto::hash;
 pub(crate) type IsSignature = Option<Signature>;
 
+/// this is a centralized key generation
 pub(crate) fn build_key_packages_with_dealer(
     max_signers: usize,
     min_signers: usize,
@@ -53,6 +55,85 @@ pub(crate) fn build_key_packages_with_dealer(
         })
         .collect::<Vec<_>>()
 }
+
+/// runs distributed keygen
+pub(crate) fn run_keygen(
+    participants: &[Participant],
+    threshold: usize,
+) -> Result<Vec<(Participant, KeygenOutput)>, Box<dyn Error>> {
+    let mut protocols: Vec<(
+        Participant,
+        Box<dyn Protocol<Output = KeygenOutput>>,
+    )> = Vec::with_capacity(participants.len());
+
+    for p in participants.iter() {
+        let protocol = keygen(participants, *p, threshold)?;
+        protocols.push((*p, Box::new(protocol)));
+    }
+
+    let result = run_protocol(protocols)?;
+    Ok(result)
+}
+
+/// runs distributed refresh
+pub(crate) fn run_refresh(
+    participants: &[Participant],
+    keys: Vec<(Participant, KeygenOutput)>,
+    threshold: usize,
+) -> Result<Vec<(Participant, KeygenOutput)>, Box<dyn Error>> {
+    let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
+        Vec::with_capacity(participants.len());
+
+    for (p, out) in keys.iter() {
+        let protocol = refresh(
+            Some(out.private_share),
+            out.public_key_package.clone(),
+            &participants,
+            threshold,
+            *p,
+        )?;
+        protocols.push((*p, Box::new(protocol)));
+    }
+
+    let result = run_protocol(protocols)?;
+    Ok (result)
+}
+
+/// runs distributed reshare
+pub(crate) fn run_reshare(
+    participants: &[Participant],
+    pub_key: &PublicKeyPackage,
+    keys: Vec<(Participant, KeygenOutput)>,
+    old_threshold: usize,
+    new_threshold: usize,
+) -> Result<Vec<(Participant, KeygenOutput)>, Box<dyn Error>> {
+    let mut setup: Vec<_> = keys
+            .into_iter()
+            .map(|(p, out)| (p, (Some(out.private_share), out.public_key_package)))
+            .collect();
+        setup.push((Participant::from(3u32), (None, pub_key.clone())));
+
+
+    let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
+    Vec::with_capacity(participants.len());
+
+    for (p, out) in setup.iter() {
+        let protocol = reshare(
+            &participants[..3],
+            old_threshold,
+            out.0,
+            out.1.clone(),
+            &participants,
+            new_threshold,
+            *p,
+        )?;
+        protocols.push((*p, Box::new(protocol)));
+    }
+
+    let result = run_protocol(protocols)?;
+    Ok(result)
+}
+
 
 
 /// similar to do_sign_participant except
@@ -139,7 +220,6 @@ pub(crate) fn run_signature_protocols(
     coordinators_count: usize,
     threshold: usize
 ) -> Result<Vec<(Participant, IsSignature)>, Box<dyn Error>> {
-
     let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = IsSignature>>)> =
         Vec::with_capacity(participants.len());
 
@@ -169,6 +249,7 @@ pub(crate) fn run_signature_protocols(
     Ok(run_protocol(protocols)?)
 }
 
+
 /// Assert that:
 ///     1. Each participant has the same view of `PublicKeyPackage`
 ///     2. Each participant is present in `PublicKeyPackage::verifying_shares()`
@@ -178,7 +259,6 @@ pub(crate) fn run_signature_protocols(
 pub(crate) fn assert_public_key_invariant(
     participants: &[(Participant, KeygenOutput)],
 ) -> Result<(), Box<dyn Error>> {
-
     let public_key_package = participants.first().unwrap().1.public_key_package.clone();
 
     if participants

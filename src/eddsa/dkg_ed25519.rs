@@ -65,27 +65,15 @@ mod test {
     use super::*;
 
     use std::error::Error;
-    use crate::protocol::{run_protocol, Participant};
+    use crate::protocol::Participant;
+    use crate::eddsa::test::{
+        run_keygen,
+        run_refresh,
+        run_reshare,
+        assert_public_key_invariant
+    };
     use crate::participants::ParticipantList;
 
-    #[allow(clippy::type_complexity)]
-    fn run_keygen(
-        participants: &[Participant],
-        threshold: usize,
-    ) -> Result<Vec<(Participant, KeygenOutput)>, Box<dyn Error>> {
-        let mut protocols: Vec<(
-            Participant,
-            Box<dyn Protocol<Output = KeygenOutput>>,
-        )> = Vec::with_capacity(participants.len());
-
-        for p in participants.iter() {
-            let protocol = keygen(participants, *p, threshold)?;
-            protocols.push((*p, Box::new(protocol)));
-        }
-
-        let result = run_protocol(protocols)?;
-        Ok(result)
-    }
 
     #[test]
     fn test_keygen() -> Result<(), Box<dyn Error>> {
@@ -97,6 +85,8 @@ mod test {
         let threshold = 3;
 
         let result = run_keygen(&participants, threshold)?;
+        assert_public_key_invariant(&result)?;
+
         assert!(result.len() == participants.len());
         assert_eq!(result[0].1.public_key_package, result[1].1.public_key_package);
         assert_eq!(result[1].1.public_key_package, result[2].1.public_key_package);
@@ -127,25 +117,12 @@ mod test {
         let threshold = 3;
 
         let result0 = run_keygen(&participants, threshold)?;
+        assert_public_key_invariant(&result0)?;
 
         let pub_key = result0[2].1.public_key_package.verifying_key().to_element();
 
-        // Refresh
-        let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
-            Vec::with_capacity(participants.len());
-
-        for (p, out) in result0.iter() {
-            let protocol = refresh(
-                Some(out.private_share),
-                out.public_key_package.clone(),
-                &participants,
-                threshold,
-                *p,
-            )?;
-            protocols.push((*p, Box::new(protocol)));
-        }
-
-        let result1 = run_protocol(protocols)?;
+        let result1 = run_refresh(&participants, result0, threshold)?;
+        assert_public_key_invariant(&result1)?;
 
         let participants = vec![
             result1[0].0,
@@ -177,33 +154,12 @@ mod test {
         let threshold1 = 4;
 
         let result0 = run_keygen(&participants[..3], threshold0)?;
+        assert_public_key_invariant(&result0)?;
 
         let pub_key = result0[2].1.public_key_package.clone();
 
-        // Reshare
-        let mut setup: Vec<_> = result0
-            .into_iter()
-            .map(|(p, out)| (p, (Some(out.private_share), out.public_key_package)))
-            .collect();
-        setup.push((Participant::from(3u32), (None, pub_key.clone())));
-
-        let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = KeygenOutput>>)> =
-            Vec::with_capacity(participants.len());
-
-        for (p, out) in setup.iter() {
-            let protocol = reshare(
-                &participants[..3],
-                threshold0,
-                out.0,
-                out.1.clone(),
-                &participants,
-                threshold1,
-                *p,
-            )?;
-            protocols.push((*p, Box::new(protocol)));
-        }
-
-        let result1 = run_protocol(protocols)?;
+        let result1 = run_reshare(&participants, &pub_key, result0, threshold0, threshold1)?;
+        assert_public_key_invariant(&result1)?;
 
         let participants = vec![
             result1[0].0,

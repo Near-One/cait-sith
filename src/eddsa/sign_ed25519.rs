@@ -283,9 +283,11 @@ pub fn sign_participant(
 #[cfg(test)]
 mod tests {
     use crate::eddsa::test::{
-        run_signature_protocols, build_key_packages_with_dealer, IsSignature
+        run_signature_protocols, build_key_packages_with_dealer, IsSignature,
+        run_keygen
     };
     use crate::protocol::Participant;
+    use std::error::Error;
 
     fn assert_single_coordinator_result(data: Vec<(Participant, IsSignature)>) {
         let count = data
