@@ -4,7 +4,7 @@ use keys::PublicKeyPackage;
 use crate::generic_dkg::*;
 use crate::protocol::internal::{make_protocol, Context};
 use crate::protocol::{InitializationError, Protocol, Participant};
-use crate::frost::KeygenOutput;
+use crate::eddsa::KeygenOutput;
 
 type E = Ed25519Sha512;
 

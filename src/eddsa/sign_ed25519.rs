@@ -1,6 +1,6 @@
 //! This module wraps a signature generation functionality from `Frost` library
 //!  into `cait-sith::Protocol` representation.
-use crate::frost::KeygenOutput;
+use crate::eddsa::KeygenOutput;
 use crate::participants::{ParticipantCounter, ParticipantList};
 use crate::protocol::internal::{make_protocol, Context, SharedChannel};
 use crate::protocol::{InitializationError, Participant, Protocol, ProtocolError};
@@ -282,7 +282,7 @@ pub fn sign_participant(
 
 #[cfg(test)]
 mod tests {
-    use crate::frost::test::{
+    use crate::eddsa::test::{
         run_signature_protocols, build_key_packages_with_dealer, IsSignature
     };
     use crate::protocol::Participant;

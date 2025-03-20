@@ -1,11 +1,11 @@
-use crate::frost::KeygenOutput;
+use crate::eddsa::KeygenOutput;
 use crate::participants::ParticipantList;
 use crate::protocol::{run_protocol, Participant, Protocol, ProtocolError};
 use crate::protocol::internal::{make_protocol, Context, SharedChannel};
-use crate::frost::sign_ed25519::{do_sign_participant, do_sign_coordinator};
+use crate::eddsa::sign_ed25519::{do_sign_participant, do_sign_coordinator};
 
 use frost_ed25519::keys::VerifyingShare;
-use frost_ed25519::{Ed25519Sha512, Group, Field, Identifier, Signature, SigningKey};
+use frost_ed25519::{Ed25519Sha512, Group, Field, Signature, SigningKey};
 use rand_core::{OsRng, RngCore};
 use std::error::Error;
 use itertools::Itertools;
