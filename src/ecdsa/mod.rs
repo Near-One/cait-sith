@@ -15,6 +15,8 @@ pub struct KeygenOutput<C: CSCurve> {
 
 pub mod math;
 pub mod presign;
+// pub mod triples;
 pub mod sign;
+mod triples;
 #[cfg(test)]
 mod test;

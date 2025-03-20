@@ -4,7 +4,7 @@ use crate::compat::CSCurve;
 use crate::participants::ParticipantCounter;
 use crate::protocol::internal::{make_protocol, Context, SharedChannel};
 use crate::protocol::{InitializationError, Protocol};
-use crate::triples::{TriplePub, TripleShare};
+use crate::ecdsa::triples::{TriplePub, TripleShare};
 use crate::ecdsa::KeygenOutput;
 use crate::{
     participants::ParticipantList,
@@ -223,7 +223,7 @@ mod test {
     use super::*;
     use rand_core::OsRng;
 
-    use crate::{ecdsa::math::Polynomial, protocol::run_protocol, triples};
+    use crate::{ecdsa::math::Polynomial, protocol::run_protocol, ecdsa::triples};
 
     use k256::{ProjectivePoint, Secp256k1};
 

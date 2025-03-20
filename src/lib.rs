@@ -132,6 +132,5 @@ pub use compat::CSCurve;
 
 pub mod eddsa;
 pub mod ecdsa;
-pub mod triples;
 pub use ecdsa::presign::{presign, PresignArguments, PresignOutput};
 pub use ecdsa::sign::{combine_signature_shares, sign, signature_share, FullSignature};

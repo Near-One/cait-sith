@@ -3,7 +3,7 @@ use magikitten::Transcript;
 use rand_core::OsRng;
 
 use crate::crypto::{Commitment, Randomizer};
-use crate::triples::multiplication::multiplication_many;
+use crate::ecdsa::triples::multiplication::multiplication_many;
 use crate::{
     compat::{CSCurve, SerializablePoint},
     crypto::{commit, hash, Digest},
@@ -1084,7 +1084,7 @@ mod test {
     use crate::{
         participants::ParticipantList,
         protocol::{run_protocol, Participant, Protocol, ProtocolError},
-        triples::generate_triple,
+        ecdsa::triples::generate_triple,
     };
 
     use super::{generate_triple_many, TripleGenerationOutput, TripleGenerationOutputMany};
