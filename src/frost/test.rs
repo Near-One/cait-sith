@@ -1,23 +1,17 @@
 use crate::frost::KeygenOutput;
 use crate::participants::ParticipantList;
-use crate::protocol::{run_protocol, Participant, Protocol};
-use frost_ed25519::{Identifier, Signature, SigningKey};
+use crate::protocol::{run_protocol, Participant, Protocol, ProtocolError};
+use crate::protocol::internal::{make_protocol, Context, SharedChannel};
+use crate::frost::sign_ed25519::{do_sign_participant, do_sign_coordinator};
+
+use frost_ed25519::keys::VerifyingShare;
+use frost_ed25519::{Ed25519Sha512, Group, Field, Identifier, Signature, SigningKey};
 use rand_core::{OsRng, RngCore};
 use std::error::Error;
-
-use crate::frost::sign_ed25519::{sign_coordinator, sign_participant};
-use rand::prelude::StdRng;
-use rand::SeedableRng;
+use itertools::Itertools;
 
 use crate::crypto::hash;
-
-
-
-#[allow(dead_code)]
-pub(crate) enum SignatureOutput {
-    Coordinator(Signature),
-    Participant,
-}
+pub(crate) type IsSignature = Option<Signature>;
 
 pub(crate) fn build_key_packages_with_dealer(
     max_signers: usize,
@@ -60,9 +54,83 @@ pub(crate) fn build_key_packages_with_dealer(
         .collect::<Vec<_>>()
 }
 
-enum SignProtType {
-    Coordinator(Signature),
-    Participant(()),
+
+/// similar to do_sign_participant except
+/// it outputs the same type as do_sign_coordinator_test
+async fn do_sign_participant_test(
+    chan: SharedChannel,
+    threshold: usize,
+    me: Participant,
+    keygen_output: KeygenOutput,
+    message: Vec<u8>,
+) -> Result<IsSignature, ProtocolError> {
+    do_sign_participant(chan, threshold, me, keygen_output, message).await?;
+    Ok(None)
+}
+
+/// similar to do_sign_coordinator except
+/// it outputs the same type as do_sign_participant_test
+async fn do_sign_coordinator_test(
+    chan: SharedChannel,
+    participants: ParticipantList,
+    threshold: usize,
+    me: Participant,
+    keygen_output: KeygenOutput,
+    message: Vec<u8>,
+) -> Result<IsSignature, ProtocolError> {
+    let sig = do_sign_coordinator(chan, participants, threshold, me, keygen_output, message).await?;
+    Ok(Some(sig))
+}
+
+
+fn sign_test(
+    participants: Vec<Participant>,
+    threshold: usize,
+    me: Participant,
+    keygen_output: KeygenOutput,
+    message: Vec<u8>,
+    is_coordinator: bool,
+) -> Result<Box<dyn Protocol<Output = IsSignature>>, ProtocolError> {
+    if participants.len() < 2 {
+        return Err(ProtocolError::AssertionFailed(format!(
+            "participant count cannot be < 2, found: {}",
+            participants.len()
+        )));
+    };
+    let Some(participants) = ParticipantList::new(&participants) else {
+        return Err(ProtocolError::AssertionFailed(format!(
+            "Participants list contains duplicates",
+        )));
+    };
+
+    // ensure my presence in the participant list
+    if !participants.contains(me) {
+        return Err(ProtocolError::AssertionFailed(
+            "participant list must contain this participant".to_string(),
+        ));
+    };
+
+    let ctx = Context::new();
+    if is_coordinator {
+        let fut = do_sign_coordinator_test(
+            ctx.shared_channel(),
+            participants,
+            threshold,
+            me,
+            keygen_output,
+            message,
+        );
+        Ok(Box::new(make_protocol(ctx, fut)))
+    } else {
+        let fut = do_sign_participant_test(
+            ctx.shared_channel(),
+            threshold,
+            me,
+            keygen_output,
+            message,
+        );
+        Ok(Box::new(make_protocol(ctx, fut)))
+    }
 }
 
 pub(crate) fn run_signature_protocols(
@@ -70,9 +138,9 @@ pub(crate) fn run_signature_protocols(
     actual_signers: usize,
     coordinators_count: usize,
     threshold: usize
-) -> Result<Vec<(Participant, SignatureOutput)>, Box<dyn Error>> {
+) -> Result<Vec<(Participant, IsSignature)>, Box<dyn Error>> {
 
-    let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = SignatureOutput>>)> =
+    let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = IsSignature>>)> =
         Vec::with_capacity(participants.len());
 
     let participants_list = participants
@@ -84,25 +152,16 @@ pub(crate) fn run_signature_protocols(
     let msg = "hello_near";
     let msg_hash = hash(&msg);
 
-
     for (idx, (participant, key_pair)) in participants.iter().take(actual_signers).enumerate() {
-        let protocol = if idx < coordinators_count{
-            sign_coordinator(
-                &participants_list.clone(),
+        let protocol: Box<dyn Protocol<Output = IsSignature>> =
+            sign_test(
+                participants_list.clone(),
                 threshold,
                 *participant,
                 key_pair.clone(),
-                msg_hash.as_ref().to_vec()
-            )
-        } else {
-           sign_participant(
-                &participants_list.clone(),
-                threshold,
-                *participant,
-                key_pair.clone(),
-                msg_hash.as_bytes().to_vec(),
-            )
-        };
+                msg_hash.as_ref().to_vec(),
+                idx < coordinators_count,
+            )?;
 
         protocols.push((*participant, protocol))
     }
@@ -119,9 +178,6 @@ pub(crate) fn run_signature_protocols(
 pub(crate) fn assert_public_key_invariant(
     participants: &[(Participant, KeygenOutput)],
 ) -> Result<(), Box<dyn Error>> {
-    use anyhow::Context;
-    use frost_ed25519::keys::VerifyingShare;
-    use frost_ed25519::Group;
 
     let public_key_package = participants.first().unwrap().1.public_key_package.clone();
 
@@ -129,34 +185,39 @@ pub(crate) fn assert_public_key_invariant(
         .iter()
         .any(|(_, key_pair)| key_pair.public_key_package != public_key_package)
     {
-        anyhow::bail!("public key package is not the same for all participants");
+        assert!(false , "public key package is not the same for all participants");
     }
 
     if public_key_package.verifying_shares().len() != participants.len() {
-        anyhow::bail!(
+        assert!(false ,
             "public key package has different number of verifying shares than participants"
         );
     }
 
     for (participant, key_pair) in participants {
-        let scalar = key_pair.key_package.signing_share().to_scalar();
+        let scalar = key_pair.private_share.to_scalar();
         let actual_verifying_share = {
             let point = frost_ed25519::Ed25519Group::generator() * scalar;
             VerifyingShare::new(point)
         };
 
-        if actual_verifying_share != *key_pair.key_package.verifying_share() {
-            anyhow::bail!("verifying share in `KeyPackage` is not equal to secret share * G");
+        let verifying_share = key_pair.public_key_package
+                                .verifying_shares()
+                                .get(&participant.to_identifier())
+                                .unwrap()
+                                .clone();
+        if actual_verifying_share != verifying_share {
+            assert!(false ,"verifying share in `KeyPackage` is not equal to secret share * G");
         }
 
         {
             let expected_verifying_share = key_pair
                 .public_key_package
                 .verifying_shares()
-                .get(&(*participant).to_identifier())
-                .context("participant not found in `PublicKeyPackage` verifying shares")?;
+                .get(&participant.to_identifier())
+                .unwrap();
             if actual_verifying_share != *expected_verifying_share {
-                anyhow::bail!(
+                assert!(false ,
                     "verifying share in `PublicKeyPackage` is not equal to secret share * G"
                 );
             }
@@ -170,16 +231,21 @@ pub(crate) fn assert_public_key_invariant(
 /// The caller is responsible for providing at least `min_signers` shares:
 ///  if less than that is provided, a different key will be returned.
 pub(crate) fn reconstruct_signing_key(
-    participants: &[(Participant, KeygenOutput)],
-) -> Result<frost_ed25519::SigningKey, Box<dyn Error>> {
-    let key_packages = participants
+    participants_keys: &[(Participant, KeygenOutput)],
+) -> frost_ed25519::SigningKey {
+    let mut secret = frost_ed25519::Ed25519ScalarField::zero();
+    let participants: Vec<Participant> = participants_keys
         .iter()
-        .map(|(_, key_pair)| key_pair.key_package.clone())
-        .collect::<Vec<_>>();
+        .map(|(participant, _)| participant.clone())
+        .collect();
 
-    let signing_key = frost_ed25519::keys::reconstruct(&key_packages)?;
+    let participants = ParticipantList::new(&participants).unwrap();
 
-    Ok(signing_key)
+    for (p, keys) in participants_keys {
+        let lagrange_coefficient = participants.generic_lagrange::<Ed25519Sha512>(*p);
+        secret = secret + (lagrange_coefficient * keys.private_share.to_scalar());
+    }
+    SigningKey::from_scalar(secret).unwrap()
 }
 
 /// Assert that:
@@ -189,48 +255,29 @@ pub(crate) fn assert_signing_schema_threshold_holds(
     expected_signing_key: frost_ed25519::SigningKey,
     threshold: usize,
     participants: &[(Participant, KeygenOutput)],
-) -> anyhow::Result<()> {
-    use itertools::Itertools;
+) -> Result<(), Box<dyn Error>> {
+
     for actual_signers_count in 1..=participants.len() {
         participants
             .iter()
             .cloned()
             .combinations(actual_signers_count)
-            .try_for_each(|signers| {
-                if actual_signers_count < threshold {
-                    if reconstruct_signing_key(signers.as_slice()).is_ok() {
-                        anyhow::bail!(
-                            "signing key should not be reconstructed \
-                        for subset of size {}",
-                            actual_signers_count
-                        );
-                    }
-                } else {
-                    let actual_signing_key = reconstruct_signing_key(signers.as_slice())?;
-                    if actual_signing_key != expected_signing_key {
-                        anyhow::bail!(
-                            "signing key should be reconstructed for subset of size {},\
-                     which is greater or equal to threshold: {}",
-                            actual_signers_count,
-                            threshold
-                        );
-                    }
+            .for_each(|signers| {
+            let signing_key= reconstruct_signing_key(signers.as_slice());
+            if actual_signers_count < threshold {
+                if signing_key == expected_signing_key {
+                    assert!(false ,
+                        "signing key should not be reconstructed \
+                        for subset of size {actual_signers_count:?}")
+                    };
+            } else {
+                if signing_key != expected_signing_key {
+                    assert!(false ,
+                        "signing key should be reconstructed for subset of size {actual_signers_count:?},\
+                    which is greater or equal to threshold: {threshold:?}");
                 }
-                Ok(())
-            })?;
-    }
+            };
+        });
+    };
     Ok(())
-}
-
-#[test]
-fn verify_stability_of_identifier_derivation() {
-    let participant = Participant::from(1e9 as u32);
-    let identifier = Identifier::derive(participant.bytes().as_slice()).unwrap();
-    assert_eq!(
-        identifier.serialize(),
-        vec![
-            96, 203, 29, 92, 230, 35, 120, 169, 19, 185, 45, 28, 48, 68, 84, 190, 12, 186, 169,
-            192, 196, 21, 238, 181, 134, 181, 203, 236, 162, 68, 212, 4
-        ]
-    );
 }

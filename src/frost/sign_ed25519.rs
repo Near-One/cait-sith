@@ -42,7 +42,7 @@ fn construct_key_package(
 /// creating a specific ciphersuite for this, and not just sending the hash
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
-async fn do_sign_coordinator(
+pub(crate) async fn do_sign_coordinator(
     mut chan: SharedChannel,
     participants: ParticipantList,
     threshold: usize,
@@ -51,7 +51,6 @@ async fn do_sign_coordinator(
     message: Vec<u8>,
 ) -> Result<Signature, ProtocolError> {
     let mut seen = ParticipantCounter::new(&participants);
-
     let mut rng = OsRng;
 
     // --- Round 1.
@@ -72,6 +71,7 @@ async fn do_sign_coordinator(
 
     while !seen.full() {
         let (from, commitment): (_, round1::SigningCommitments) = chan.recv(r1_wait_point).await?;
+
         if !seen.put(from) {
             continue;
         }
@@ -131,7 +131,7 @@ async fn do_sign_coordinator(
 /// creating a specific ciphersuite for this, and not just sending the hash
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
-async fn do_sign_participant(
+pub(crate) async fn do_sign_participant(
     mut chan: SharedChannel,
     threshold: usize,
     me: Participant,
@@ -139,7 +139,6 @@ async fn do_sign_participant(
     message: Vec<u8>,
 ) -> Result<(), ProtocolError> {
     let mut rng = OsRng;
-
     // create signing share out of private_share
     let signing_share = SigningShare::new(keygen_output.private_share.to_scalar());
 
@@ -284,16 +283,16 @@ pub fn sign_participant(
 #[cfg(test)]
 mod tests {
     use crate::frost::test::{
-        run_signature_protocols, build_key_packages_with_dealer, SignatureOutput,
+        run_signature_protocols, build_key_packages_with_dealer, IsSignature
     };
     use crate::protocol::Participant;
 
-    fn assert_single_coordinator_result(data: Vec<(Participant, SignatureOutput)>) {
+    fn assert_single_coordinator_result(data: Vec<(Participant, IsSignature)>) {
         let count = data
             .iter()
             .filter(|(_, output)| match output {
-                SignatureOutput::Coordinator(_) => true,
-                SignatureOutput::Participant => false,
+                Some(_) => true,
+                None => false,
             })
             .count();
         assert_eq!(count, 1);
