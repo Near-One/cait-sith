@@ -11,7 +11,7 @@ use rand_core::{OsRng, RngCore};
 use std::error::Error;
 use itertools::Itertools;
 
-use crate::crypto::hash;
+use crate::crypto::Digest;
 pub(crate) type IsSignature = Option<Signature>;
 
 /// this is a centralized key generation
@@ -218,7 +218,8 @@ pub(crate) fn run_signature_protocols(
     participants: &[(Participant, KeygenOutput)],
     actual_signers: usize,
     coordinators_count: usize,
-    threshold: usize
+    threshold: usize,
+    msg_hash: Digest,
 ) -> Result<Vec<(Participant, IsSignature)>, Box<dyn Error>> {
     let mut protocols: Vec<(Participant, Box<dyn Protocol<Output = IsSignature>>)> =
         Vec::with_capacity(participants.len());
@@ -228,9 +229,6 @@ pub(crate) fn run_signature_protocols(
         .take(actual_signers)
         .map(|(id, _)| *id)
         .collect::<Vec<_>>();
-
-    let msg = "hello_near";
-    let msg_hash = hash(&msg);
 
     for (idx, (participant, key_pair)) in participants.iter().take(actual_signers).enumerate() {
         let protocol: Box<dyn Protocol<Output = IsSignature>> =

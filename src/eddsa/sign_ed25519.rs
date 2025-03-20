@@ -282,6 +282,9 @@ pub fn sign_participant(
 
 #[cfg(test)]
 mod tests {
+    use frost_ed25519::Signature;
+    use crate::crypto::hash;
+
     use crate::eddsa::test::{
         run_signature_protocols, build_key_packages_with_dealer, IsSignature,
         run_keygen
@@ -289,27 +292,34 @@ mod tests {
     use crate::protocol::Participant;
     use std::error::Error;
 
-    fn assert_single_coordinator_result(data: Vec<(Participant, IsSignature)>) {
+    fn assert_single_coordinator_result(data: Vec<(Participant, IsSignature)>) -> Signature {
+        let mut signature = None;
         let count = data
             .iter()
             .filter(|(_, output)| match output {
-                Some(_) => true,
+                Some(s) => {
+                    signature = Some(*s);
+                    true
+                },
                 None => false,
             })
             .count();
         assert_eq!(count, 1);
+        signature.unwrap()
     }
 
     #[test]
     fn basic_two_participants() {
         let max_signers = 2;
-        let min_signers = 2;
+        let threshold = 2;
         let actual_signers = 2;
         let coordinators = 1;
+        let msg = "hello_near";
+        let msg_hash = hash(&msg);
 
-        let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
+        let key_packages = build_key_packages_with_dealer(max_signers, threshold);
         let data =
-        run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers).unwrap();
+        run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash).unwrap();
         assert_single_coordinator_result(data);
     }
 
@@ -317,13 +327,15 @@ mod tests {
     #[should_panic]
     fn multiple_coordinators() {
         let max_signers = 3;
-        let min_signers = 2;
+        let threshold = 2;
         let actual_signers = 2;
         let coordinators = 2;
+        let msg = "hello_near";
+        let msg_hash = hash(&msg);
 
-        let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
+        let key_packages = build_key_packages_with_dealer(max_signers, threshold);
         let data =
-        run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers).unwrap();
+        run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash).unwrap();
         assert_single_coordinator_result(data);
     }
 
@@ -331,14 +343,44 @@ mod tests {
     fn stress() {
         let max_signers = 7;
         let coordinators = 1;
+        let msg = "hello_near";
+        let msg_hash = hash(&msg);
+
         for min_signers in 2..max_signers {
             for actual_signers in min_signers..=max_signers {
                 let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
                 let data =
-                run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers)
+                run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers, msg_hash)
                         .unwrap();
                 assert_single_coordinator_result(data);
             }
         }
+    }
+
+    #[test]
+    fn dkg_sign_test()
+    -> Result<(), Box<dyn Error>>{
+        let participants = vec![
+            Participant::from(3u32),
+            Participant::from(1u32),
+            Participant::from(2u32),
+        ];
+        let actual_signers = participants.len();
+        let coordinators = 1;
+        let threshold = 2;
+        let msg = "hello_near";
+        let msg_hash = hash(&msg);
+
+        let key_packages = run_keygen(&participants, threshold)?;
+        let data =
+            run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash)
+            .unwrap();
+        let signature = assert_single_coordinator_result(data);
+
+        assert!(key_packages[0].1.public_key_package
+            .verifying_key()
+            .verify(msg_hash.as_ref(), &signature)
+            .is_ok());
+        Ok(())
     }
 }
