@@ -34,11 +34,6 @@ haisou-chan = { git = "https://github.com/cronokirby/haisou-chan", rev = "d28c46
 structopt = "0.3.26"
 k256 = { version = "0.13.1", features = ["sha256", "ecdsa", "serde"], optional = false }
 
-[[bench]]
-name = "protocols"
-harness = false
-required-features = ["k256"]
-
 [features]
 k256 = ["dep:k256"]
 
