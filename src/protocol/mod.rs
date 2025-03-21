@@ -123,15 +123,13 @@ impl Participant {
     /// The implementation follows the original frost library
     pub fn generic_scalar<C: Ciphersuite>(&self) -> Scalar<C> {
         let mut bytes = vec![0u8; 32];
-        bytes[..4].copy_from_slice(&self.0.to_le_bytes());
+        let id = (self.0 as u64) + 1;
+        bytes[..8].copy_from_slice(&id.to_le_bytes());
+
         // transform the bytes into a scalar and fails if Scalar
         // is not in the range [0, order - 1]
-        let scalar = match SerializableScalar::<C>::deserialize(&bytes) {
-            Ok(serialization) => serialization.0,
-            _ => <<C::Group as Group>::Field as Field>::zero()
-        };
-        // We prevent having the scalar be zero
-        scalar + <<C::Group as Group>::Field as Field>::one()
+        let scalar = SerializableScalar::<C>::deserialize(&bytes).expect("Cannot be zero");
+        scalar.0
     }
 
     /// Returns a Frost identifier used in the frost library
