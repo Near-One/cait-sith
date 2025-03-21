@@ -28,10 +28,14 @@ pub enum ProtocolError {
     InvalidProofOfKnowledge(Participant),
     /// The validation of the secret share sent has failed
     InvalidSecretShare(Participant),
+    /// The signing key is zero
+    MalformedElement,
     /// Detected malicious participant
     MaliciousParticipant(Participant),
     /// The signing key is zero
     MalformedSigningKey,
+    /// Error in serializing point
+    PointSerialization,
     /// Some generic error happened.
     Other(Box<dyn error::Error + Send + Sync>),
 }
@@ -56,10 +60,12 @@ impl fmt::Display for ProtocolError {
             ProtocolError::InvalidSecretShare(p) => {
                 write!(f, "participant {p:?} sent an invalid secret share.")
             }
+            ProtocolError::MalformedElement => write!(f, "the element you are trying to construct is malformed."),
             ProtocolError::MaliciousParticipant(p) => {
                 write!(f, "detected a malicious participant {p:?}.")
             }
             ProtocolError::MalformedSigningKey => write!(f, "the constructed signing key is null."),
+            ProtocolError::PointSerialization => write!(f, "The group element could not be serialized."),
         }
     }
 }
