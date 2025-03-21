@@ -24,10 +24,9 @@ use crate::protocol::{run_protocol, Participant, Protocol};
 use crate::ecdsa::dkg_ecdsa::{keygen, reshare, refresh};
 
 use frost_secp256k1::keys::{PublicKeyPackage, VerifyingShare};
-use frost_secp256k1::{Group, Signature, SigningKey};
+use frost_secp256k1::{Group, SigningKey};
 use rand_core::{OsRng, RngCore};
 
-pub(crate) type IsSignature = Option<Signature>;
 
 /// this is a centralized key generation
 pub(crate) fn build_key_packages_with_dealer(
@@ -241,7 +240,6 @@ fn run_presign(
         .zip(shares0.into_iter())
         .zip(shares1.into_iter())
     {
-        println!("{p:?} {keygen_out:?}");
         let protocol = presign(
             &participant_list,
             p,
@@ -300,7 +298,8 @@ fn test_e2e() -> Result<(), Box<dyn Error>> {
     ];
     let threshold = 3;
 
-    let keygen_result = run_keygen(&participants.clone(), threshold)?;
+    let mut keygen_result = run_keygen(&participants.clone(), threshold)?;
+    keygen_result.sort_by_key(|(p, _)| *p);
 
     let public_key = keygen_result[0].1.public_key_package.clone();
     assert_eq!(keygen_result[0].1.public_key_package, keygen_result[1].1.public_key_package);

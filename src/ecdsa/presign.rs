@@ -48,6 +48,7 @@ fn from_secp256k1sha256_to_cscurve_vk<C: CSCurve>(
 ) -> Result<C::ProjectivePoint, ProtocolError>{
     // serializes into a canonical byte array buf of length 33 bytes using the  affine point representation
     let bytes = verifying_key.serialize().map_err(|_| ProtocolError::PointSerialization)?;
+
     let bytes: [u8; 33] = bytes.try_into().expect("Slice is not 33 bytes long");
     let point = match C::from_bytes_to_affine(bytes) {
         Some(point) => point,
@@ -80,8 +81,6 @@ async fn do_presign<C: CSCurve>(
     let big_d = args.triple0.1.big_b;
     let big_kd = args.triple0.1.big_c;
 
-    let public_key = from_secp256k1sha256_to_cscurve_vk::<C>(args.keygen_out.public_key_package.verifying_key())?;
-    let big_x: C::ProjectivePoint = public_key;
 
     let big_a: C::ProjectivePoint = args.triple1.1.big_a.into();
     let big_b: C::ProjectivePoint = args.triple1.1.big_b.into();
@@ -98,8 +97,10 @@ async fn do_presign<C: CSCurve>(
     let c_i = args.triple1.0.c;
     let a_prime_i = bt_lambda * a_i;
     let b_prime_i = bt_lambda * b_i;
-    let private_share = from_secp256k1sha256_to_cscurve_sk::<C>(&args.keygen_out.private_share);
 
+    let public_key = from_secp256k1sha256_to_cscurve_vk::<C>(args.keygen_out.public_key_package.verifying_key())?;
+    let big_x: C::ProjectivePoint = public_key;
+    let private_share = from_secp256k1sha256_to_cscurve_sk::<C>(&args.keygen_out.private_share);
     let x_prime_i = sk_lambda * private_share;
 
     // Spec 1.4
