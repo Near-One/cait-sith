@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn dkg_sign_test()
     -> Result<(), Box<dyn Error>>{
-        let mut participants = vec![
+        let participants = vec![
             Participant::from(0u32),
             Participant::from(31u32),
             Participant::from(1u32),

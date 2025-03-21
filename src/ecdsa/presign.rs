@@ -1,4 +1,4 @@
-use elliptic_curve::{AffinePoint, Field, Group, ScalarPrimitive};
+use elliptic_curve::{Field, Group, ScalarPrimitive};
 
 use crate::compat::CSCurve;
 use crate::participants::ParticipantCounter;
@@ -43,7 +43,7 @@ pub struct PresignArguments<C: CSCurve> {
 }
 
 /// Transforms a verification key of type Secp256k1SHA256 to CSCurve of cait-sith
-fn from_Secp256k1SHA256_to_CSCurve_vk<C: CSCurve>(
+fn from_secp256k1sha256_to_cscurve_vk<C: CSCurve>(
     verifying_key: &VerifyingKey
 ) -> Result<C::ProjectivePoint, ProtocolError>{
     // serializes into a canonical byte array buf of length 33 bytes using the  affine point representation
@@ -57,7 +57,7 @@ fn from_Secp256k1SHA256_to_CSCurve_vk<C: CSCurve>(
 }
 
 /// Transforms a secret key of type Secp256k1Sha256 to CSCurve of cait-sith
-fn from_Secp256k1SHA256_to_CSCurve_sk <C: CSCurve>(
+fn from_secp256k1sha256_to_cscurve_sk <C: CSCurve>(
     private_share: &SigningKey
 ) -> C::Scalar {
     let bytes = private_share.serialize();
@@ -80,7 +80,7 @@ async fn do_presign<C: CSCurve>(
     let big_d = args.triple0.1.big_b;
     let big_kd = args.triple0.1.big_c;
 
-    let public_key = from_Secp256k1SHA256_to_CSCurve_vk::<C>(args.keygen_out.public_key_package.verifying_key())?;
+    let public_key = from_secp256k1sha256_to_cscurve_vk::<C>(args.keygen_out.public_key_package.verifying_key())?;
     let big_x: C::ProjectivePoint = public_key;
 
     let big_a: C::ProjectivePoint = args.triple1.1.big_a.into();
@@ -98,7 +98,7 @@ async fn do_presign<C: CSCurve>(
     let c_i = args.triple1.0.c;
     let a_prime_i = bt_lambda * a_i;
     let b_prime_i = bt_lambda * b_i;
-    let private_share = from_Secp256k1SHA256_to_CSCurve_sk::<C>(&args.keygen_out.private_share);
+    let private_share = from_secp256k1sha256_to_cscurve_sk::<C>(&args.keygen_out.private_share);
 
     let x_prime_i = sk_lambda * private_share;
 
@@ -269,7 +269,7 @@ mod test {
         ];
         let original_threshold = 2;
         let f = Polynomial::<Secp256k1>::random(&mut OsRng, original_threshold);
-        let big_x = (ProjectivePoint::GENERATOR * f.evaluate_zero());
+        let big_x = ProjectivePoint::GENERATOR * f.evaluate_zero();
 
 
         let threshold = 2;

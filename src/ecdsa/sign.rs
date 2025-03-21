@@ -8,7 +8,7 @@ use crate::{
         internal::{make_protocol, Context, SharedChannel},
         InitializationError, Participant, Protocol, ProtocolError,
     },
-    PresignOutput,
+    ecdsa::presign::PresignOutput,
 };
 
 /// Represents a signature with extra information, to support different variants of ECDSA.

@@ -32,7 +32,7 @@ pub trait CSCurve: PrimeCurve + CurveArithmetic {
     fn from_bytes_to_scalar(bytes: [u8; 32]) -> Option<Self::Scalar>;
 
     /// transform bytes into affine point
-    fn from_bytes_to_affine(bytes: [u8; 34]) -> Option<Self::ProjectivePoint>;
+    fn from_bytes_to_affine(bytes: [u8; 33]) -> Option<Self::ProjectivePoint>;
 
     /// A function to sample a random scalar, guaranteed to be constant-time.
     ///
@@ -43,8 +43,6 @@ pub trait CSCurve: PrimeCurve + CurveArithmetic {
 
 #[cfg(any(feature = "k256", test))]
 mod k256_impl {
-    use crate::protocol::ProtocolError;
-
     use super::*;
 
     use elliptic_curve::sec1::FromEncodedPoint;
@@ -81,7 +79,7 @@ mod k256_impl {
             Scalar::from_repr(bytes.to_be_byte_array()).into_option()
         }
 
-        fn from_bytes_to_affine(bytes: [u8; 34]) -> Option<Self::ProjectivePoint>{
+        fn from_bytes_to_affine(bytes: [u8; 33]) -> Option<Self::ProjectivePoint>{
             let encoded_point = match k256::EncodedPoint::from_bytes(bytes){
                 Ok(encoded) => encoded,
                 Err(_) => return None,
