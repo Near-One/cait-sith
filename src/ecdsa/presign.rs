@@ -46,9 +46,9 @@ pub struct PresignArguments<C: CSCurve> {
 fn from_Secp256k1SHA256_to_CSCurve_vk<C: CSCurve>(
     verifying_key: &VerifyingKey
 ) -> Result<C::ProjectivePoint, ProtocolError>{
-    // serializes into a canonical byte array buf of length 34 bytes using the  affine point representation
+    // serializes into a canonical byte array buf of length 33 bytes using the  affine point representation
     let bytes = verifying_key.serialize().map_err(|_| ProtocolError::PointSerialization)?;
-    let bytes: [u8; 34] = bytes.try_into().expect("Slice is not 34 bytes long");
+    let bytes: [u8; 33] = bytes.try_into().expect("Slice is not 33 bytes long");
     let point = match C::from_bytes_to_affine(bytes) {
         Some(point) => point,
         _ => return Err(ProtocolError::PointSerialization),
@@ -247,86 +247,95 @@ pub fn presign<C: CSCurve>(
     Ok(make_protocol(ctx, fut))
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//     use rand_core::OsRng;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rand_core::OsRng;
 
-//     use crate::{ecdsa::math::Polynomial, protocol::run_protocol, ecdsa::triples};
+    use crate::{ecdsa::math::Polynomial, protocol::run_protocol, ecdsa::triples};
+    use frost_secp256k1::Identifier;
+    use frost_secp256k1::keys::{PublicKeyPackage, VerifyingShare};
+    use std::collections::BTreeMap;
 
-//     use k256::{ProjectivePoint, Secp256k1};
+    use k256::{ProjectivePoint, Secp256k1};
 
-//     #[test]
-//     fn test_presign() {
-//         let participants = vec![
-//             Participant::from(0u32),
-//             Participant::from(1u32),
-//             Participant::from(2u32),
-//             Participant::from(3u32),
-//         ];
-//         let original_threshold = 2;
-//         let f = Polynomial::<Secp256k1>::random(&mut OsRng, original_threshold);
-//         let big_x = (ProjectivePoint::GENERATOR * f.evaluate_zero()).to_affine();
+    #[test]
+    fn test_presign() {
+        let participants = vec![
+            Participant::from(0u32),
+            Participant::from(1u32),
+            Participant::from(2u32),
+            Participant::from(3u32),
+        ];
+        let original_threshold = 2;
+        let f = Polynomial::<Secp256k1>::random(&mut OsRng, original_threshold);
+        let big_x = (ProjectivePoint::GENERATOR * f.evaluate_zero());
 
-//         let keygen_out = KeygenOutput {
-//             private_share: f.evaluate(&p.scalar::<Secp256k1>()),
-//             public_key_package: big_x,
-//         };
-//         let threshold = 2;
 
-//         let (triple0_pub, triple0_shares) =
-//             triples::deal(&mut OsRng, &participants, original_threshold);
-//         let (triple1_pub, triple1_shares) =
-//             triples::deal(&mut OsRng, &participants, original_threshold);
+        let threshold = 2;
 
-//         #[allow(clippy::type_complexity)]
-//         let mut protocols: Vec<(
-//             Participant,
-//             Box<dyn Protocol<Output = PresignOutput<Secp256k1>>>,
-//         )> = Vec::with_capacity(participants.len());
+        let (triple0_pub, triple0_shares) =
+            triples::deal(&mut OsRng, &participants, original_threshold);
+        let (triple1_pub, triple1_shares) =
+            triples::deal(&mut OsRng, &participants, original_threshold);
 
-//         for ((p, triple0), triple1) in participants
-//             .iter()
-//             .take(3)
-//             .zip(triple0_shares.into_iter())
-//             .zip(triple1_shares.into_iter())
-//         {
-//             let protocol = presign(
-//                 &participants[..3],
-//                 *p,
-//                 &participants[..3],
-//                 *p,
-//                 PresignArguments {
-//                     triple0: (triple0, triple0_pub.clone()),
-//                     triple1: (triple1, triple1_pub.clone()),
-//                     keygen_out,
-//                     threshold,
-//                 },
-//             );
-//             assert!(protocol.is_ok());
-//             let protocol = protocol.unwrap();
-//             protocols.push((*p, Box::new(protocol)));
-//         }
+        #[allow(clippy::type_complexity)]
+        let mut protocols: Vec<(
+            Participant,
+            Box<dyn Protocol<Output = PresignOutput<Secp256k1>>>,
+        )> = Vec::with_capacity(participants.len());
 
-//         let result = run_protocol(protocols);
-//         assert!(result.is_ok());
-//         let result = result.unwrap();
+        for ((p, triple0), triple1) in participants
+            .iter()
+            .take(3)
+            .zip(triple0_shares.into_iter())
+            .zip(triple1_shares.into_iter())
+        {
+            let private_share = f.evaluate(&p.scalar::<Secp256k1>());
+            let dummy_tree: BTreeMap<Identifier, VerifyingShare> = BTreeMap::new();
+            let verifying_key = VerifyingKey::new(big_x);
+            let public_key_package = PublicKeyPackage::new(dummy_tree, verifying_key);
+            let keygen_out = KeygenOutput {
+                private_share: SigningKey::from_scalar(private_share).unwrap() ,
+                public_key_package,
+            };
 
-//         assert!(result.len() == 3);
-//         assert_eq!(result[0].1.big_r, result[1].1.big_r);
-//         assert_eq!(result[1].1.big_r, result[2].1.big_r);
+            let protocol = presign(
+                &participants[..3],
+                *p,
+                &participants[..3],
+                *p,
+                PresignArguments {
+                    triple0: (triple0, triple0_pub.clone()),
+                    triple1: (triple1, triple1_pub.clone()),
+                    keygen_out,
+                    threshold,
+                },
+            );
+            assert!(protocol.is_ok());
+            let protocol = protocol.unwrap();
+            protocols.push((*p, Box::new(protocol)));
+        }
 
-//         let big_k = result[2].1.big_r;
+        let result = run_protocol(protocols);
+        assert!(result.is_ok());
+        let result = result.unwrap();
 
-//         let participants = vec![result[0].0, result[1].0];
-//         let k_shares = vec![result[0].1.k, result[1].1.k];
-//         let sigma_shares = vec![result[0].1.sigma, result[1].1.sigma];
-//         let p_list = ParticipantList::new(&participants).unwrap();
-//         let k = p_list.lagrange::<Secp256k1>(participants[0]) * k_shares[0]
-//             + p_list.lagrange::<Secp256k1>(participants[1]) * k_shares[1];
-//         assert_eq!(ProjectivePoint::GENERATOR * k.invert().unwrap(), big_k);
-//         let sigma = p_list.lagrange::<Secp256k1>(participants[0]) * sigma_shares[0]
-//             + p_list.lagrange::<Secp256k1>(participants[1]) * sigma_shares[1];
-//         assert_eq!(sigma, k * f.evaluate_zero());
-//     }
-// }
+        assert!(result.len() == 3);
+        assert_eq!(result[0].1.big_r, result[1].1.big_r);
+        assert_eq!(result[1].1.big_r, result[2].1.big_r);
+
+        let big_k = result[2].1.big_r;
+
+        let participants = vec![result[0].0, result[1].0];
+        let k_shares = vec![result[0].1.k, result[1].1.k];
+        let sigma_shares = vec![result[0].1.sigma, result[1].1.sigma];
+        let p_list = ParticipantList::new(&participants).unwrap();
+        let k = p_list.lagrange::<Secp256k1>(participants[0]) * k_shares[0]
+            + p_list.lagrange::<Secp256k1>(participants[1]) * k_shares[1];
+        assert_eq!(ProjectivePoint::GENERATOR * k.invert().unwrap(), big_k);
+        let sigma = p_list.lagrange::<Secp256k1>(participants[0]) * sigma_shares[0]
+            + p_list.lagrange::<Secp256k1>(participants[1]) * sigma_shares[1];
+        assert_eq!(sigma, k * f.evaluate_zero());
+    }
+}
