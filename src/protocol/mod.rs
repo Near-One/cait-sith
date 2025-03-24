@@ -11,7 +11,7 @@ use crate::compat::CSCurve;
 use ::serde::{Deserialize, Serialize};
 
 use frost_core::serialization::SerializableScalar;
-use frost_core::{Ciphersuite, Field, Group, Identifier, Scalar};
+use frost_core::{Ciphersuite, Identifier, Scalar};
 
 /// Represents an error which can happen when running a protocol.
 #[derive(Debug)]
@@ -300,10 +300,3 @@ pub(crate) fn run_two_party_protocol<T0: fmt::Debug, T1: fmt::Debug>(
 }
 
 pub(crate) mod internal;
-
-#[cfg(feature = "internals")]
-pub use internal::make_protocol;
-#[cfg(feature = "internals")]
-pub use internal::Context;
-#[cfg(feature = "internals")]
-pub use internal::SharedChannel;

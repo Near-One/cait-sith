@@ -6,10 +6,9 @@ use crate::eddsa::sign_ed25519::{do_sign_participant, do_sign_coordinator};
 use crate::eddsa::dkg_ed25519::{keygen, reshare, refresh};
 
 use frost_ed25519::keys::{PublicKeyPackage, VerifyingShare};
-use frost_ed25519::{Ed25519Sha512, Group, Field, Signature, SigningKey};
+use frost_ed25519::{Group, Signature, SigningKey};
 use rand_core::{OsRng, RngCore};
 use std::error::Error;
-use itertools::Itertools;
 
 use crate::crypto::Digest;
 pub(crate) type IsSignature = Option<Signature>;

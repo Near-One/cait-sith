@@ -24,51 +24,9 @@ use crate::protocol::{run_protocol, Participant, Protocol};
 use crate::ecdsa::dkg_ecdsa::{keygen, reshare, refresh};
 
 use frost_secp256k1::keys::{PublicKeyPackage, VerifyingShare};
-use frost_secp256k1::{Group, SigningKey};
-use rand_core::{OsRng, RngCore};
+use frost_secp256k1::Group;
+use rand_core::OsRng;
 
-
-/// this is a centralized key generation
-pub(crate) fn build_key_packages_with_dealer(
-    max_signers: usize,
-    min_signers: usize,
-) -> Vec<(Participant, KeygenOutput)> {
-    use std::collections::BTreeMap;
-
-    let mut identifiers = Vec::with_capacity(max_signers);
-    for _ in 0..max_signers {
-        // from 1 to avoid assigning 0 to a ParticipantId
-        identifiers.push(Participant::from(OsRng.next_u32()))
-    }
-
-    let from_frost_identifiers = identifiers
-        .iter()
-        .map(|&x| (x.to_identifier(), x))
-        .collect::<BTreeMap<_, _>>();
-
-    let identifiers_list = from_frost_identifiers.keys().cloned().collect::<Vec<_>>();
-
-    let (shares, pubkey_package) = frost_secp256k1::keys::generate_with_dealer(
-        max_signers as u16,
-        min_signers as u16,
-        frost_secp256k1::keys::IdentifierList::Custom(identifiers_list.as_slice()),
-        OsRng,
-    )
-    .unwrap();
-
-    shares
-        .into_iter()
-        .map(|(id, share)| {
-            (
-                from_frost_identifiers[&id],
-                KeygenOutput {
-                    private_share: SigningKey::from_scalar(share.signing_share().to_scalar()).unwrap(),
-                    public_key_package: pubkey_package.clone(),
-                },
-            )
-        })
-        .collect::<Vec<_>>()
-}
 
 /// runs distributed keygen
 pub(crate) fn run_keygen(
