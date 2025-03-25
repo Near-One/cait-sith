@@ -523,7 +523,7 @@ async fn do_keyshare<C: Ciphersuite>(
     let public_key_package = public_key_package.unwrap();
 
     // unwrap cannot fail as round 4 ensures failing if verification_key is None
-    return Ok((signing_share, public_key_package));
+    Ok((signing_share, public_key_package))
 }
 
 /// Represents the output of the key generation protocol.

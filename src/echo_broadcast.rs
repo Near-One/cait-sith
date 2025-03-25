@@ -90,7 +90,7 @@ where
     T: Serialize,
 {
     let vote = MessageType::Send(data);
-    let sid = participants.index(&me);
+    let sid = participants.index(me);
     // Send vote to all participants but for myself
     chan.send_many(wait, &(&sid, &vote)).await;
     // the vote is returned to be taken into consideration as received
@@ -114,7 +114,7 @@ where
     let n = participants.len();
     let (echo_t, ready_t) = echo_ready_thresholds(n);
 
-    let mut vote_output = ParticipantMap::new(&participants);
+    let mut vote_output = ParticipantMap::new(participants);
 
     // first dimension determines the session
     // second dimension contains the counter for the received data
@@ -123,8 +123,8 @@ where
 
     // first dimension determines the session
     // second dimension helps prevent duplication: correct processes should deliver at most one message
-    let mut seen_echo = vec![ParticipantCounter::new(&participants); n];
-    let mut seen_ready = vec![ParticipantCounter::new(&participants); n];
+    let mut seen_echo = vec![ParticipantCounter::new(participants); n];
+    let mut seen_ready = vec![ParticipantCounter::new(participants); n];
 
     let mut finish_send = vec![false; n];
     let mut finish_echo = vec![false; n];
@@ -132,14 +132,14 @@ where
     let mut finish_ready = vec![false; n];
 
     // receive simulated vote
-    let mut from = me.clone();
-    let mut sid = participants.index(&me);
+    let mut from = *me;
+    let mut sid = participants.index(me);
     let mut vote = match send_vote {
         MessageType::Send(_) => send_vote.clone(),
         _ => {
-            return Err(ProtocolError::AssertionFailed(format!(
-            "Function reliable_broadcast_receive_all MUST take a vote of type send_vote as input"
-        )))
+            return Err(ProtocolError::AssertionFailed("Function
+            reliable_broadcast_receive_all MUST take a vote of
+            type send_vote as input".to_string()))
         }
     };
     let mut is_simulated_vote = true;
@@ -176,7 +176,7 @@ where
 
                 // simulate an echo vote sent by me
                 is_simulated_vote = true;
-                from = me.clone();
+                from = *me;
             }
             // Receive send vote then echo to everybody
             MessageType::Echo(data) => {
@@ -198,7 +198,7 @@ where
 
                     // simulate a ready vote sent by me
                     is_simulated_vote = true;
-                    from = me.clone();
+                    from = *me;
                 }
                 // suppose you receive not enough echo votes but the amount of votes
                 // left to receive is not sufficient to proceed to the ready phase
@@ -244,7 +244,7 @@ where
                 // and if I haven't already amplified ready vote in session sid then
                 // proceed to amplification of the ready message
                 if data_ready[sid].get(&data).unwrap() > ready_t
-                    && finish_amplification[sid] == false
+                    && !finish_amplification[sid]
                 {
                     vote = MessageType::Ready(data.clone());
                     chan.send_many(wait, &(&sid, &vote)).await;
@@ -252,7 +252,7 @@ where
 
                     // simulate a ready vote sent by me
                     is_simulated_vote = true;
-                    from = me.clone();
+                    from = *me;
                 }
                 if data_ready[sid].get(&data).unwrap() > 2 * ready_t {
                     // skip all types of messages sent for session sid from now on
@@ -268,12 +268,11 @@ where
 
                     // Output error if the received vote after broadcast is not
                     // the same as the one originally sent
-                    if sid == participants.index(&me) && MessageType::Send(data) != send_vote {
-                        return Err(ProtocolError::AssertionFailed(format!(
+                    if sid == participants.index(me) && MessageType::Send(data) != send_vote {
+                        return Err(ProtocolError::AssertionFailed(
                             "Too many malicious parties, way above the assumed threshold:
                             The message output after the broadcast protocol is not the same as
-                            the one originally sent by me"
-                        )));
+                            the one originally sent by me".to_string()));
                     }
 
                     // if all the ready slots are set to true
@@ -300,9 +299,9 @@ where
     T: Serialize + Clone + DeserializeOwned + PartialEq,
 {
     let wait_broadcast = chan.next_waitpoint();
-    let send_vote = reliable_broadcast_send(&chan, wait_broadcast, &participants, &me, data).await;
+    let send_vote = reliable_broadcast_send(chan, wait_broadcast, participants, me, data).await;
     let vote_list =
-        reliable_broadcast_receive_all(&chan, wait_broadcast, &participants, &me, send_vote)
+        reliable_broadcast_receive_all(chan, wait_broadcast, participants, me, send_vote)
             .await?;
     Ok(vote_list)
 }
