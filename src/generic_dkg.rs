@@ -233,7 +233,7 @@ fn evaluate_polynomial<C: Ciphersuite>(
     participant: Participant,
 ) -> Result<SigningShare<C>, ProtocolError> {
     let id = participant.to_identifier::<C>();
-    Ok(SigningShare::from_coefficients(&coefficients[..], id))
+    Ok(SigningShare::from_coefficients(coefficients, id))
 }
 
 // creates a signing share structure using my identifier, the received

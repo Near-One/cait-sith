@@ -70,16 +70,16 @@ impl ParticipantList {
     ///
     /// Basically, the order they appear in a sorted list
     pub fn index(&self, participant: &Participant) -> usize {
-        self.indices[&participant]
+        self.indices[participant]
     }
 
     // Return a participant of a given index from the order they
     // appear in the sorted list
-    pub fn from_index(&self, index: &usize) -> Option<Participant> {
+    pub fn get_participant(&self, index: &usize) -> Option<Participant> {
         if *index >= self.participants.len() {
             return None;
         }
-        Some(self.participants[*index].clone())
+        Some(self.participants[*index])
     }
 
     /// Get the lagrange coefficient for a participant, relative to this list.
@@ -207,7 +207,7 @@ impl<'a, T> ParticipantMap<'a, T> {
     pub fn into_vec_or_none(self) -> Option<Vec<T>> {
         let mut vec_data: Vec<T> = Vec::new();
         for d in self.data {
-            let Some(data) = d else { return None };
+            let data = d?;
             vec_data.push(data)
         }
         Some(vec_data)

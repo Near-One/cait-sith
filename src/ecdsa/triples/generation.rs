@@ -746,9 +746,9 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
 
             big_e_j_zero_v[i].put(from, their_big_e.evaluate_zero());
 
-            big_e_v[i] += &their_big_e;
-            big_f_v[i] += &their_big_f;
-            big_l_v[i] += &their_big_l;
+            big_e_v[i] += their_big_e;
+            big_f_v[i] += their_big_f;
+            big_l_v[i] += their_big_l;
         }
     }
 

@@ -262,7 +262,7 @@ where
 
                     // return a map of participant data
                     // the unwrap will not fail as the index is in the range of participants
-                    let p = participants.from_index(&sid).unwrap();
+                    let p = participants.get_participant(&sid).unwrap();
                     // make a list of data and return them
                     vote_output.put(p, data.clone());
 
