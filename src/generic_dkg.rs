@@ -34,7 +34,7 @@ fn assert_keyshare_inputs<C: Ciphersuite>(
             //  that have nothing todo with the current resharing
             if old_participants.contains(me) {
                 return Err(ProtocolError::AssertionFailed(
-                    format!("{me:?} is running DKG with a zero share but does belong to the old participant set")));
+                    format!("{me:?} is running Resharing with a zero share but does belong to the old participant set")));
             }
         } else {
             //  return error if me is part of the old participants set
@@ -61,7 +61,7 @@ fn generate_secret_polynomial<C: Ciphersuite>(
     threshold: usize,
     rng: &mut OsRng,
 ) -> Vec<Scalar<C>> {
-    let mut coefficients = Vec::new();
+    let mut coefficients = Vec::with_capacity(threshold);
     // insert the secret share
     coefficients.push(secret);
     for _ in 1..threshold {
@@ -213,7 +213,7 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
 /// This function is called when the commitment length is threshold -1
 /// i.e. when the new participant sent a polynomial with a non-existant constant term
 /// such a participant would do so as the identity is not serializable
-fn possible_insert_identity <C: Ciphersuite>(
+fn insert_identity_if_missing <C: Ciphersuite>(
     threshold: usize,
     commitment_i: &VerifiableSecretSharingCommitment<C>,
 ) -> VerifiableSecretSharingCommitment<C> {
@@ -319,6 +319,12 @@ fn public_key_package_from_commitments<C: Ciphersuite>(
     Ok(PublicKeyPackage::new(verifying_shares, vk))
 }
 
+
+/// This function takes err as input.
+/// If err is None then broadcast success
+/// otherwise, broadcast failure
+/// If during broadcast it receives an error then propagates it
+/// This function is used in the final round of DKG
 async fn broadcast_success_failure(
     chan: &mut SharedChannel,
     participants: &ParticipantList,
@@ -332,9 +338,8 @@ async fn broadcast_success_failure(
         Some(err) => {
             // broadcast node me failed
             do_broadcast(chan, participants, me, false).await?;
-            return Err(err);
-        }
-
+            Err(err)
+        },
         None => {
             // broadcast node me succeded
             let vote_list = do_broadcast(chan, participants, me, true).await?;
@@ -348,7 +353,7 @@ async fn broadcast_success_failure(
             };
             // Wait for all the tasks to complete
             Ok(())
-        }
+        },
     }
 }
 
@@ -434,7 +439,7 @@ async fn do_keyshare<C: Ciphersuite>(
 
     // recreate the commitments map with the proper commitment sizes = threshold
     let mut all_full_commitments = ParticipantMap::new(&participants);
-    let my_full_commitment = possible_insert_identity(threshold, all_commitments.index(me));
+    let my_full_commitment = insert_identity_if_missing(threshold, all_commitments.index(me));
     all_full_commitments.put(me, my_full_commitment);
 
     // receive evaluations from all participants
@@ -451,7 +456,7 @@ async fn do_keyshare<C: Ciphersuite>(
 
         // in case the participant was new and it sent a polynomial of length
         // threshold -1 (because the zero term is not serializable)
-        let full_commitment_from = possible_insert_identity(threshold, commitment_from);
+        let full_commitment_from = insert_identity_if_missing(threshold, commitment_from);
 
         // Verify the share
         validate_received_share::<C>(&me, &from, &signing_share_from, &full_commitment_from)?;
@@ -548,7 +553,9 @@ pub (crate) async fn do_keygen<C: Ciphersuite>(
     })
 }
 
-pub (crate) fn keygen_assertions<C: Ciphersuite>(
+/// This function is to be called before running DKG
+/// It ensures that the input parameters are valid
+pub (crate) fn assert_keygen_invariants<C: Ciphersuite>(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
@@ -602,7 +609,6 @@ pub (crate) async fn do_reshare<C: Ciphersuite>(
         .unwrap_or(<C::Group as Group>::Field::zero());
 
     let old_reshare_package = Some((old_public_key, old_participants));
-    // call keyshare
     let (private_share, public_key_package) = do_keyshare::<C>(
         chan,
         participants,
