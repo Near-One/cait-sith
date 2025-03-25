@@ -4,6 +4,6 @@ pub type KeygenOutput = crate::generic_dkg::KeygenOutput<Ed25519Sha512>;
 
 
 pub mod dkg_ed25519;
-pub mod sign_ed25519;
+pub mod sign;
 #[cfg(test)]
 mod test;

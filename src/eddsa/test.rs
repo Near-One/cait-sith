@@ -2,7 +2,7 @@ use crate::eddsa::KeygenOutput;
 use crate::participants::ParticipantList;
 use crate::protocol::{run_protocol, Participant, Protocol, ProtocolError};
 use crate::protocol::internal::{make_protocol, Context, SharedChannel};
-use crate::eddsa::sign_ed25519::{do_sign_participant, do_sign_coordinator};
+use crate::eddsa::sign::{do_sign_participant, do_sign_coordinator};
 use crate::eddsa::dkg_ed25519::{keygen, reshare, refresh};
 
 use frost_ed25519::keys::{PublicKeyPackage, VerifyingShare};
