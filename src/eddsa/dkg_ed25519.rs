@@ -1,10 +1,10 @@
 use frost_ed25519::*;
 use keys::PublicKeyPackage;
 
+use crate::eddsa::KeygenOutput;
 use crate::generic_dkg::*;
 use crate::protocol::internal::{make_protocol, Context};
-use crate::protocol::{InitializationError, Protocol, Participant};
-use crate::eddsa::KeygenOutput;
+use crate::protocol::{InitializationError, Participant, Protocol};
 
 type E = Ed25519Sha512;
 
@@ -33,8 +33,23 @@ pub fn reshare(
     let ctx = Context::new();
     let threshold = new_threshold;
     let old_public_key = *old_public_key.verifying_key();
-    let (participants,old_participants) = reshare_assertions::<E>(new_participants, me, threshold, old_signing_key, old_threshold, old_participants)?;
-    let fut = do_reshare(ctx.shared_channel(), participants, me, threshold, old_signing_key, old_public_key, old_participants);
+    let (participants, old_participants) = reshare_assertions::<E>(
+        new_participants,
+        me,
+        threshold,
+        old_signing_key,
+        old_threshold,
+        old_participants,
+    )?;
+    let fut = do_reshare(
+        ctx.shared_channel(),
+        participants,
+        me,
+        threshold,
+        old_signing_key,
+        old_public_key,
+        old_participants,
+    );
     Ok(make_protocol(ctx, fut))
 }
 
@@ -46,7 +61,7 @@ pub fn refresh(
     new_threshold: usize,
     me: Participant,
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
-    if old_signing_key.is_none(){
+    if old_signing_key.is_none() {
         return Err(InitializationError::BadParameters(format!(
             "The participant {me:?} is running refresh without an old share",
         )));
@@ -54,26 +69,34 @@ pub fn refresh(
     let ctx = Context::new();
     let threshold = new_threshold;
     let old_public_key = *old_public_key.verifying_key();
-    let (participants,old_participants) = reshare_assertions::<E>(new_participants, me, threshold, old_signing_key, threshold, new_participants)?;
-    let fut = do_reshare(ctx.shared_channel(), participants, me, threshold, old_signing_key, old_public_key, old_participants);
+    let (participants, old_participants) = reshare_assertions::<E>(
+        new_participants,
+        me,
+        threshold,
+        old_signing_key,
+        threshold,
+        new_participants,
+    )?;
+    let fut = do_reshare(
+        ctx.shared_channel(),
+        participants,
+        me,
+        threshold,
+        old_signing_key,
+        old_public_key,
+        old_participants,
+    );
     Ok(make_protocol(ctx, fut))
 }
-
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use std::error::Error;
-    use crate::protocol::Participant;
-    use crate::eddsa::test::{
-        run_keygen,
-        run_refresh,
-        run_reshare,
-        assert_public_key_invariant
-    };
+    use crate::eddsa::test::{assert_public_key_invariant, run_keygen, run_refresh, run_reshare};
     use crate::participants::ParticipantList;
-
+    use crate::protocol::Participant;
+    use std::error::Error;
 
     #[test]
     fn test_keygen() -> Result<(), Box<dyn Error>> {
@@ -88,8 +111,14 @@ mod test {
         assert_public_key_invariant(&result)?;
 
         assert!(result.len() == participants.len());
-        assert_eq!(result[0].1.public_key_package, result[1].1.public_key_package);
-        assert_eq!(result[1].1.public_key_package, result[2].1.public_key_package);
+        assert_eq!(
+            result[0].1.public_key_package,
+            result[1].1.public_key_package
+        );
+        assert_eq!(
+            result[1].1.public_key_package,
+            result[2].1.public_key_package
+        );
 
         let pub_key = result[2].1.public_key_package.verifying_key().to_element();
 
@@ -124,15 +153,11 @@ mod test {
         let result1 = run_refresh(&participants, result0, threshold)?;
         assert_public_key_invariant(&result1)?;
 
-        let participants = vec![
-            result1[0].0,
-            result1[1].0,
-            result1[2].0
-        ];
+        let participants = vec![result1[0].0, result1[1].0, result1[2].0];
         let shares = vec![
             result1[0].1.private_share.to_scalar(),
             result1[1].1.private_share.to_scalar(),
-            result1[2].1.private_share.to_scalar()
+            result1[2].1.private_share.to_scalar(),
         ];
         let p_list = ParticipantList::new(&participants).unwrap();
         let x = p_list.generic_lagrange::<E>(participants[0]) * shares[0]
@@ -159,27 +184,32 @@ mod test {
 
         let mut new_participant = participants.clone();
         new_participant.push(Participant::from(31u32));
-        let result1 = run_reshare(&participants, &pub_key, result0, threshold0, threshold1, new_participant)?;
+        let result1 = run_reshare(
+            &participants,
+            &pub_key,
+            result0,
+            threshold0,
+            threshold1,
+            new_participant,
+        )?;
         assert_public_key_invariant(&result1)?;
 
-        let participants = vec![
-            result1[0].0,
-            result1[1].0,
-            result1[2].0,
-            result1[3].0
-        ];
+        let participants = vec![result1[0].0, result1[1].0, result1[2].0, result1[3].0];
         let shares = vec![
             result1[0].1.private_share.to_scalar(),
             result1[1].1.private_share.to_scalar(),
             result1[2].1.private_share.to_scalar(),
-            result1[3].1.private_share.to_scalar()
+            result1[3].1.private_share.to_scalar(),
         ];
         let p_list = ParticipantList::new(&participants).unwrap();
         let x = p_list.generic_lagrange::<E>(participants[0]) * shares[0]
             + p_list.generic_lagrange::<E>(participants[1]) * shares[1]
             + p_list.generic_lagrange::<E>(participants[2]) * shares[2]
             + p_list.generic_lagrange::<E>(participants[3]) * shares[3];
-        assert_eq!(<Ed25519Group>::generator() * x, pub_key.verifying_key().to_element());
+        assert_eq!(
+            <Ed25519Group>::generator() * x,
+            pub_key.verifying_key().to_element()
+        );
 
         Ok(())
     }

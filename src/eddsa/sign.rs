@@ -5,11 +5,10 @@ use crate::participants::{ParticipantCounter, ParticipantList};
 use crate::protocol::internal::{make_protocol, Context, SharedChannel};
 use crate::protocol::{InitializationError, Participant, Protocol, ProtocolError};
 
+use frost_ed25519::keys::{KeyPackage, PublicKeyPackage, SigningShare};
+use frost_ed25519::*;
 use rand_core::OsRng;
 use std::collections::BTreeMap;
-use frost_ed25519::*;
-use frost_ed25519::keys::{SigningShare, PublicKeyPackage, KeyPackage};
-
 
 /// Coordinator sends this message to other participants to:
 ///     (a) indicate the start of the protocol
@@ -24,13 +23,19 @@ fn construct_key_package(
     me: &Participant,
     signing_share: &SigningShare,
     verification_package: &PublicKeyPackage,
-) -> KeyPackage{
+) -> KeyPackage {
     let identifier = me.to_identifier();
     let signing_share = *signing_share;
     let verifying_share = signing_share.into();
     let verifying_key = *verification_package.verifying_key();
 
-    KeyPackage::new(identifier, signing_share, verifying_share, verifying_key, threshold as u16)
+    KeyPackage::new(
+        identifier,
+        signing_share,
+        verifying_share,
+        verifying_key,
+        threshold as u16,
+    )
 }
 
 /// Returns a future that executes signature protocol for *the Coordinator*.
@@ -112,12 +117,8 @@ pub(crate) async fn do_sign_coordinator(
     // * Converted collected signature shares into the signature.
     // * Signature is verified internally during `aggregate()` call.
 
-    let signature = frost_ed25519::aggregate(
-        &signing_package,
-        &signature_shares,
-        &vk_package,
-    )
-    .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
+    let signature = frost_ed25519::aggregate(&signing_package, &signature_shares, &vk_package)
+        .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
 
     Ok(signature)
 }
@@ -209,9 +210,11 @@ pub fn sign_coordinator(
         )));
     };
     let Some(participants) = ParticipantList::new(participants) else {
-        return Err(InitializationError::BadParameters("
-        Participants list contains duplicates".to_string()
-    ));
+        return Err(InitializationError::BadParameters(
+            "
+        Participants list contains duplicates"
+                .to_string(),
+        ));
     };
 
     // ensure my presence in the participant list
@@ -249,7 +252,6 @@ pub fn sign_participant(
     keygen_output: KeygenOutput,
     message: Vec<u8>,
 ) -> Result<impl Protocol<Output = ()>, InitializationError> {
-
     if participants.len() < 2 {
         return Err(InitializationError::BadParameters(format!(
             "participant count cannot be < 2, found: {}",
@@ -258,7 +260,7 @@ pub fn sign_participant(
     };
     let Some(participants) = ParticipantList::new(participants) else {
         return Err(InitializationError::BadParameters(
-            "Participants list contains duplicates".to_string()
+            "Participants list contains duplicates".to_string(),
         ));
     };
 
@@ -270,29 +272,18 @@ pub fn sign_participant(
     };
 
     let ctx = Context::new();
-    let fut = do_sign_participant(
-        ctx.shared_channel(),
-        threshold,
-        me,
-        keygen_output,
-        message,
-    );
+    let fut = do_sign_participant(ctx.shared_channel(), threshold, me, keygen_output, message);
     Ok(make_protocol(ctx, fut))
 }
 
 #[cfg(test)]
 mod tests {
-    use frost_ed25519::Signature;
     use crate::crypto::hash;
+    use frost_ed25519::Signature;
 
     use crate::eddsa::test::{
-        run_signature_protocols,
-        build_key_packages_with_dealer,
-        IsSignature,
-        run_keygen,
-        run_refresh,
-        run_reshare,
-        assert_public_key_invariant,
+        assert_public_key_invariant, build_key_packages_with_dealer, run_keygen, run_refresh,
+        run_reshare, run_signature_protocols, IsSignature,
     };
     use crate::protocol::Participant;
     use std::error::Error;
@@ -305,7 +296,7 @@ mod tests {
                 Some(s) => {
                     signature = Some(*s);
                     true
-                },
+                }
                 None => false,
             })
             .count();
@@ -323,8 +314,14 @@ mod tests {
         let msg_hash = hash(&msg);
 
         let key_packages = build_key_packages_with_dealer(max_signers, threshold);
-        let data =
-        run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash).unwrap();
+        let data = run_signature_protocols(
+            &key_packages,
+            actual_signers,
+            coordinators,
+            threshold,
+            msg_hash,
+        )
+        .unwrap();
         assert_single_coordinator_result(data);
     }
 
@@ -339,8 +336,14 @@ mod tests {
         let msg_hash = hash(&msg);
 
         let key_packages = build_key_packages_with_dealer(max_signers, threshold);
-        let data =
-        run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash).unwrap();
+        let data = run_signature_protocols(
+            &key_packages,
+            actual_signers,
+            coordinators,
+            threshold,
+            msg_hash,
+        )
+        .unwrap();
         assert_single_coordinator_result(data);
     }
 
@@ -354,17 +357,21 @@ mod tests {
         for min_signers in 2..max_signers {
             for actual_signers in min_signers..=max_signers {
                 let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
-                let data =
-                run_signature_protocols(&key_packages, actual_signers, coordinators, min_signers, msg_hash)
-                        .unwrap();
+                let data = run_signature_protocols(
+                    &key_packages,
+                    actual_signers,
+                    coordinators,
+                    min_signers,
+                    msg_hash,
+                )
+                .unwrap();
                 assert_single_coordinator_result(data);
             }
         }
     }
 
     #[test]
-    fn dkg_sign_test()
-    -> Result<(), Box<dyn Error>>{
+    fn dkg_sign_test() -> Result<(), Box<dyn Error>> {
         let participants = vec![
             Participant::from(0u32),
             Participant::from(31u32),
@@ -380,12 +387,19 @@ mod tests {
         // test dkg
         let key_packages = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&key_packages)?;
-        let data =
-            run_signature_protocols(&key_packages, actual_signers, coordinators, threshold, msg_hash)
-            .unwrap();
+        let data = run_signature_protocols(
+            &key_packages,
+            actual_signers,
+            coordinators,
+            threshold,
+            msg_hash,
+        )
+        .unwrap();
         let signature = assert_single_coordinator_result(data);
 
-        assert!(key_packages[0].1.public_key_package
+        assert!(key_packages[0]
+            .1
+            .public_key_package
             .verifying_key()
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
@@ -395,34 +409,53 @@ mod tests {
         assert_public_key_invariant(&key_packages1)?;
         let msg = "hello_near_2";
         let msg_hash = hash(&msg);
-        let data =
-        run_signature_protocols(&key_packages1, actual_signers, coordinators, threshold, msg_hash)
+        let data = run_signature_protocols(
+            &key_packages1,
+            actual_signers,
+            coordinators,
+            threshold,
+            msg_hash,
+        )
         .unwrap();
         let signature = assert_single_coordinator_result(data);
         let pub_key = key_packages1[2].1.public_key_package.clone();
-        assert!(key_packages1[0].1.public_key_package
+        assert!(key_packages1[0]
+            .1
+            .public_key_package
             .verifying_key()
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
-
 
         // test reshare
         let mut new_participant = participants.clone();
         new_participant.push(Participant::from(20u32));
         let new_threshold = 4;
-        let key_packages2 = run_reshare(&participants, &pub_key, key_packages1, threshold, new_threshold, new_participant)?;
+        let key_packages2 = run_reshare(
+            &participants,
+            &pub_key,
+            key_packages1,
+            threshold,
+            new_threshold,
+            new_participant,
+        )?;
         assert_public_key_invariant(&key_packages2)?;
         let msg = "hello_near_3";
         let msg_hash = hash(&msg);
-        let data =
-        run_signature_protocols(&key_packages2, actual_signers, coordinators, threshold, msg_hash)
+        let data = run_signature_protocols(
+            &key_packages2,
+            actual_signers,
+            coordinators,
+            threshold,
+            msg_hash,
+        )
         .unwrap();
         let signature = assert_single_coordinator_result(data);
-        assert!(key_packages2[0].1.public_key_package
+        assert!(key_packages2[0]
+            .1
+            .public_key_package
             .verifying_key()
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
-
 
         Ok(())
     }

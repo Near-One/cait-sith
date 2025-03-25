@@ -1082,9 +1082,9 @@ mod test {
     use k256::{ProjectivePoint, Secp256k1};
 
     use crate::{
+        ecdsa::triples::generate_triple,
         participants::ParticipantList,
         protocol::{run_protocol, Participant, Protocol, ProtocolError},
-        ecdsa::triples::generate_triple,
     };
 
     use super::{generate_triple_many, TripleGenerationOutput, TripleGenerationOutputMany};

@@ -6,11 +6,10 @@
 
 use std::{collections::HashMap, mem, ops::Index};
 
+use frost_core::{Ciphersuite, Group, Scalar};
 use serde::Serialize;
-use frost_core::{Scalar, Group, Ciphersuite};
 
 use crate::{compat::CSCurve, protocol::Participant};
-
 
 /// Represents a sorted list of participants.
 ///
@@ -116,13 +115,12 @@ impl ParticipantList {
                 continue;
             }
             let q_scalar = q.generic_scalar::<C>();
-            top = top* q_scalar;
-            bot = bot*(q_scalar - p_scalar);
+            top = top * q_scalar;
+            bot = bot * (q_scalar - p_scalar);
         }
         let inverted = <C::Group as Group>::Field::invert(&bot).unwrap();
         top * inverted
     }
-
 
     /// Return the intersection of this list with another list.
     pub fn intersection(&self, others: &ParticipantList) -> Self {
@@ -137,7 +135,7 @@ impl ParticipantList {
     }
 
     // Returns all the participants in the list
-    pub fn participants(&self) -> Vec<Participant>{
+    pub fn participants(&self) -> Vec<Participant> {
         self.participants.clone()
     }
 }

@@ -3,12 +3,12 @@ use subtle::ConditionallySelectable;
 
 use crate::{
     compat::{self, CSCurve},
+    ecdsa::presign::PresignOutput,
     participants::{ParticipantCounter, ParticipantList},
     protocol::{
         internal::{make_protocol, Context, SharedChannel},
         InitializationError, Participant, Protocol, ProtocolError,
     },
-    ecdsa::presign::PresignOutput,
 };
 
 /// Represents a signature with extra information, to support different variants of ECDSA.

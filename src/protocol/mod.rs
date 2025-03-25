@@ -60,12 +60,16 @@ impl fmt::Display for ProtocolError {
             ProtocolError::InvalidSecretShare(p) => {
                 write!(f, "participant {p:?} sent an invalid secret share.")
             }
-            ProtocolError::MalformedElement => write!(f, "the element you are trying to construct is malformed."),
+            ProtocolError::MalformedElement => {
+                write!(f, "the element you are trying to construct is malformed.")
+            }
             ProtocolError::MaliciousParticipant(p) => {
                 write!(f, "detected a malicious participant {p:?}.")
             }
             ProtocolError::MalformedSigningKey => write!(f, "the constructed signing key is null."),
-            ProtocolError::PointSerialization => write!(f, "The group element could not be serialized."),
+            ProtocolError::PointSerialization => {
+                write!(f, "The group element could not be serialized.")
+            }
         }
     }
 }
@@ -133,7 +137,7 @@ impl Participant {
     }
 
     /// Returns a Frost identifier used in the frost library
-    pub fn to_identifier<C: Ciphersuite>(&self) -> Identifier<C>{
+    pub fn to_identifier<C: Ciphersuite>(&self) -> Identifier<C> {
         let id = self.generic_scalar::<C>();
         // creating an identifier as required by the syntax of frost_core
         // cannot panic as the previous line ensures id is neq zero

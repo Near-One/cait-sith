@@ -1,21 +1,20 @@
-
 use crate::crypto::{hash, Digest};
-use crate::serde::encode;
 use crate::echo_broadcast::do_broadcast;
 use crate::participants::{ParticipantCounter, ParticipantList, ParticipantMap};
 use crate::protocol::internal::SharedChannel;
 use crate::protocol::{InitializationError, Participant, ProtocolError};
+use crate::serde::encode;
 
-use rand_core::OsRng;
-use std::ops::Index;
 use frost_core::keys::{
-    CoefficientCommitment, PublicKeyPackage, SecretShare, SigningShare, VerifiableSecretSharingCommitment,
-    VerifyingShare
+    CoefficientCommitment, PublicKeyPackage, SecretShare, SigningShare,
+    VerifiableSecretSharingCommitment, VerifyingShare,
 };
 use frost_core::{
-    Challenge, Ciphersuite, Element, Error, Field, Group, Scalar, Signature,
-    SigningKey, VerifyingKey,
+    Challenge, Ciphersuite, Element, Error, Field, Group, Scalar, Signature, SigningKey,
+    VerifyingKey,
 };
+use rand_core::OsRng;
+use std::ops::Index;
 
 const LABEL: &[u8] = b"Generic DKG";
 
@@ -72,16 +71,14 @@ fn generate_secret_polynomial<C: Ciphersuite>(
 
 /// Creates a commitment vector of coefficients * G
 /// If the first coefficient is set to zero then skip it
-fn generate_coefficient_commitment<C: Ciphersuite>
-    (secret_coefficients:&[Scalar<C>]) -> Vec<CoefficientCommitment<C>>{
-
+fn generate_coefficient_commitment<C: Ciphersuite>(
+    secret_coefficients: &[Scalar<C>],
+) -> Vec<CoefficientCommitment<C>> {
     // we skip the zero share as neither zero scalar
     // nor identity group element are serializable
     let coeff_iter = secret_coefficients
-            .iter()
-            .skip(
-                (secret_coefficients.first() == Some(&<C::Group as Group>::Field::zero())
-            ) as usize);
+        .iter()
+        .skip((secret_coefficients.first() == Some(&<C::Group as Group>::Field::zero())) as usize);
 
     // Compute the multiplication of every coefficient of p with the generator G
     let coefficient_commitment: Vec<CoefficientCommitment<C>> = coeff_iter
@@ -104,13 +101,19 @@ fn challenge<C: Ciphersuite>(
     // Should not return Error
     // The function should not be called when the first coefficient is zero
     let serialized_vk_share = vk_share.serialize().map_err(|_| {
-        ProtocolError::AssertionFailed("The verification share
-        could not be serialized as it is null".to_string())
+        ProtocolError::AssertionFailed(
+            "The verification share
+        could not be serialized as it is null"
+                .to_string(),
+        )
     })?;
 
     let serialized_big_r = <C::Group>::serialize(big_r).map_err(|_| {
-        ProtocolError::AssertionFailed("The group element R
-        could not be serialized as it is the identity".to_string())
+        ProtocolError::AssertionFailed(
+            "The group element R
+        could not be serialized as it is the identity"
+                .to_string(),
+        )
     })?;
 
     preimage.extend_from_slice(serialized_id.as_ref());
@@ -184,11 +187,11 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
         }
         // since previous line did not abort, then we know participant is new indeed
         // check the commitment length is threshold - 1
-        if commitment.coefficients().len() != threshold - 1{
+        if commitment.coefficients().len() != threshold - 1 {
             return Err(ProtocolError::IncorrectNumberOfCommitments);
         }
         // nothing to verify
-        return Ok(())
+        return Ok(());
     } else {
         // if participant sent something but he is actually a new participant
         if old_participants.is_some() && !old_participants.unwrap().contains(participant) {
@@ -211,20 +214,20 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
 /// This function is called when the commitment length is threshold -1
 /// i.e. when the new participant sent a polynomial with a non-existant constant term
 /// such a participant would do so as the identity is not serializable
-fn insert_identity_if_missing <C: Ciphersuite>(
+fn insert_identity_if_missing<C: Ciphersuite>(
     threshold: usize,
     commitment_i: &VerifiableSecretSharingCommitment<C>,
 ) -> VerifiableSecretSharingCommitment<C> {
-        // in case the participant was new and it sent a polynomial of length
-        // threshold -1 (because the zero term is not serializable)
-        let mut commitment_i = commitment_i.clone();
-        let mut coefficients_i = commitment_i.coefficients().to_vec();
-        if coefficients_i.len() == threshold-1{
-            let identity = CoefficientCommitment::new(<C::Group as Group>::identity());
-            coefficients_i.insert(0, identity);
-            commitment_i = VerifiableSecretSharingCommitment::new(coefficients_i);
-        }
-        commitment_i
+    // in case the participant was new and it sent a polynomial of length
+    // threshold -1 (because the zero term is not serializable)
+    let mut commitment_i = commitment_i.clone();
+    let mut coefficients_i = commitment_i.coefficients().to_vec();
+    if coefficients_i.len() == threshold - 1 {
+        let identity = CoefficientCommitment::new(<C::Group as Group>::identity());
+        coefficients_i.insert(0, identity);
+        commitment_i = VerifiableSecretSharingCommitment::new(coefficients_i);
+    }
+    commitment_i
 }
 
 // evaluates a polynomial on the identifier of the participant
@@ -306,17 +309,21 @@ fn public_key_package_from_commitments<C: Ciphersuite>(
     let commitment = frost_core::keys::sum_commitments(&commitments)
         .map_err(|_| ProtocolError::IncorrectNumberOfCommitments)?;
 
-    let verifying_shares =
-    participants.participants()
+    let verifying_shares = participants
+        .participants()
         .iter()
-        .map(|p| (p.to_identifier(), VerifyingShare::from_commitment(p.to_identifier(), &commitment)))
+        .map(|p| {
+            (
+                p.to_identifier(),
+                VerifyingShare::from_commitment(p.to_identifier(), &commitment),
+            )
+        })
         .collect();
 
     let vk = VerifyingKey::from_commitment(&commitment)
         .map_err(|_| ProtocolError::ErrorExtractVerificationKey)?;
     Ok(PublicKeyPackage::new(verifying_shares, vk))
 }
-
 
 /// This function takes err as input.
 /// If err is None then broadcast success
@@ -337,7 +344,7 @@ async fn broadcast_success_failure(
             // broadcast node me failed
             do_broadcast(chan, participants, me, false).await?;
             Err(err)
-        },
+        }
         None => {
             // broadcast node me succeded
             let vote_list = do_broadcast(chan, participants, me, true).await?;
@@ -345,12 +352,15 @@ async fn broadcast_success_failure(
             let vote_list = vote_list.into_vec_or_none().unwrap();
             // go through all the list of votes and check if any is fail
             if vote_list.contains(&false) {
-                return Err(ProtocolError::AssertionFailed("A participant
-                seems to have failed its checks. Aborting DKG!".to_string()));
+                return Err(ProtocolError::AssertionFailed(
+                    "A participant
+                seems to have failed its checks. Aborting DKG!"
+                        .to_string(),
+                ));
             };
             // Wait for all the tasks to complete
             Ok(())
-        },
+        }
     }
 }
 
@@ -413,7 +423,13 @@ async fn do_keyshare<C: Ciphersuite>(
         // verify the proof of knowledge
         // if proof is none then make sure the participant is new
         // and performing a resharing not a DKG
-        verify_proof_of_knowledge(threshold, p, old_participants.clone(), commitment_i, proof_i)?;
+        verify_proof_of_knowledge(
+            threshold,
+            p,
+            old_participants.clone(),
+            commitment_i,
+            proof_i,
+        )?;
 
         // add received commitment and proof to the map
         all_commitments.put(p, commitment_i.clone());
@@ -428,11 +444,10 @@ async fn do_keyshare<C: Ciphersuite>(
 
     // compute transcript hash
     let my_transcript =
-    compute_transcript_hash(&participants, threshold, &all_commitments, &all_proofs);
+        compute_transcript_hash(&participants, threshold, &all_commitments, &all_proofs);
 
     // compute the my secret evaluation of my private polynomial
     let mut my_signing_share = evaluate_polynomial::<C>(&secret_coefficients, me)?.to_scalar();
-
 
     // recreate the commitments map with the proper commitment sizes = threshold
     let mut all_full_commitments = ParticipantMap::new(&participants);
@@ -476,8 +491,11 @@ async fn do_keyshare<C: Ciphersuite>(
     // check transcript hashes
     for their_transcript in transcript_list {
         if my_transcript != their_transcript {
-            err = Some(ProtocolError::AssertionFailed("transcript
-            hash did not match expectation".to_string()));
+            err = Some(ProtocolError::AssertionFailed(
+                "transcript
+            hash did not match expectation"
+                    .to_string(),
+            ));
             break;
         }
     }
@@ -505,8 +523,11 @@ async fn do_keyshare<C: Ciphersuite>(
         if let Some(pk) = public_key_package.clone() {
             // check the equality between the old key and the new key without failing the unwrap
             if vk != *pk.verifying_key() {
-                err = Some(ProtocolError::AssertionFailed("new public
-                key does not match old public key".to_string()));
+                err = Some(ProtocolError::AssertionFailed(
+                    "new public
+                key does not match old public key"
+                        .to_string(),
+                ));
             }
         };
     };
@@ -530,7 +551,7 @@ pub struct KeygenOutput<C: Ciphersuite> {
     pub public_key_package: PublicKeyPackage<C>,
 }
 
-pub (crate) async fn do_keygen<C: Ciphersuite>(
+pub(crate) async fn do_keygen<C: Ciphersuite>(
     chan: SharedChannel,
     participants: ParticipantList,
     me: Participant,
@@ -550,7 +571,7 @@ pub (crate) async fn do_keygen<C: Ciphersuite>(
 
 /// This function is to be called before running DKG
 /// It ensures that the input parameters are valid
-pub (crate) fn assert_keygen_invariants(
+pub(crate) fn assert_keygen_invariants(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
@@ -585,7 +606,7 @@ pub (crate) fn assert_keygen_invariants(
 }
 
 /// reshares the keyshares between the parties and allows changing the threshold
-pub (crate) async fn do_reshare<C: Ciphersuite>(
+pub(crate) async fn do_reshare<C: Ciphersuite>(
     chan: SharedChannel,
     participants: ParticipantList,
     me: Participant,
@@ -621,7 +642,7 @@ pub (crate) async fn do_reshare<C: Ciphersuite>(
     })
 }
 
-pub (crate) fn reshare_assertions<C: Ciphersuite>(
+pub(crate) fn reshare_assertions<C: Ciphersuite>(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
@@ -637,7 +658,11 @@ pub (crate) fn reshare_assertions<C: Ciphersuite>(
     };
     if threshold > participants.len() {
         return Err(InitializationError::BadParameters(
-            format!("new threshold {threshold:?} must be <= participant count {}", participants.len()).to_string(),
+            format!(
+                "new threshold {threshold:?} must be <= participant count {}",
+                participants.len()
+            )
+            .to_string(),
         ));
     }
 
@@ -669,7 +694,8 @@ pub (crate) fn reshare_assertions<C: Ciphersuite>(
     // if me is not in the old participant set then ensure that old_signing_key is None
     if old_participants.contains(me) && old_signing_key.is_none() {
         return Err(InitializationError::BadParameters(
-            format!("party {me:?} is present in the old participant list but provided no share").to_string(),
+            format!("party {me:?} is present in the old participant list but provided no share")
+                .to_string(),
         ));
     }
     Ok((participants, old_participants))

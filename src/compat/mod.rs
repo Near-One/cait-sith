@@ -45,10 +45,11 @@ pub trait CSCurve: PrimeCurve + CurveArithmetic {
 mod k256_impl {
     use super::*;
 
-    use elliptic_curve::sec1::FromEncodedPoint;
     use elliptic_curve::bigint::{Bounded, U512};
+    use elliptic_curve::sec1::FromEncodedPoint;
     use k256::{
-        Secp256k1, elliptic_curve::{bigint::ArrayEncoding, PrimeField}, Scalar, U256,
+        elliptic_curve::{bigint::ArrayEncoding, PrimeField},
+        Scalar, Secp256k1, U256,
     };
 
     impl CSCurve for Secp256k1 {
@@ -74,21 +75,21 @@ mod k256_impl {
             <Self::Scalar as Reduce<U512>>::reduce_bytes(&data.into())
         }
 
-        fn from_bytes_to_scalar(bytes: [u8; 32]) -> Option<Self::Scalar>{
+        fn from_bytes_to_scalar(bytes: [u8; 32]) -> Option<Self::Scalar> {
             let bytes = U256::from_be_slice(bytes.as_slice());
             Scalar::from_repr(bytes.to_be_byte_array()).into_option()
         }
 
-        fn from_bytes_to_affine(bytes: [u8; 33]) -> Option<Self::ProjectivePoint>{
-            let encoded_point = match k256::EncodedPoint::from_bytes(bytes){
+        fn from_bytes_to_affine(bytes: [u8; 33]) -> Option<Self::ProjectivePoint> {
+            let encoded_point = match k256::EncodedPoint::from_bytes(bytes) {
                 Ok(encoded) => encoded,
                 Err(_) => return None,
             };
-            match Option::<Self::AffinePoint>::from(Self::AffinePoint::from_encoded_point(&encoded_point)) {
-            Some(point) => {
-                    Some(Self::ProjectivePoint::from(point))
-            },
-            None => None,
+            match Option::<Self::AffinePoint>::from(Self::AffinePoint::from_encoded_point(
+                &encoded_point,
+            )) {
+                Some(point) => Some(Self::ProjectivePoint::from(point)),
+                None => None,
             }
         }
     }

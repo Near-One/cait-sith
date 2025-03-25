@@ -130,5 +130,5 @@ mod serde;
 
 pub use compat::CSCurve;
 
-pub mod eddsa;
 pub mod ecdsa;
+pub mod eddsa;

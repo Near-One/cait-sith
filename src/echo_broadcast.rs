@@ -137,9 +137,12 @@ where
     let mut vote = match send_vote {
         MessageType::Send(_) => send_vote.clone(),
         _ => {
-            return Err(ProtocolError::AssertionFailed("Function
+            return Err(ProtocolError::AssertionFailed(
+                "Function
             reliable_broadcast_receive_all MUST take a vote of
-            type send_vote as input".to_string()))
+            type send_vote as input"
+                    .to_string(),
+            ))
         }
     };
     let mut is_simulated_vote = true;
@@ -243,9 +246,7 @@ where
                 // upon gathering strictly more than f votes
                 // and if I haven't already amplified ready vote in session sid then
                 // proceed to amplification of the ready message
-                if data_ready[sid].get(&data).unwrap() > ready_t
-                    && !finish_amplification[sid]
-                {
+                if data_ready[sid].get(&data).unwrap() > ready_t && !finish_amplification[sid] {
                     vote = MessageType::Ready(data.clone());
                     chan.send_many(wait, &(&sid, &vote)).await;
                     finish_amplification[sid] = true;
@@ -272,7 +273,9 @@ where
                         return Err(ProtocolError::AssertionFailed(
                             "Too many malicious parties, way above the assumed threshold:
                             The message output after the broadcast protocol is not the same as
-                            the one originally sent by me".to_string()));
+                            the one originally sent by me"
+                                .to_string(),
+                        ));
                     }
 
                     // if all the ready slots are set to true
@@ -301,8 +304,7 @@ where
     let wait_broadcast = chan.next_waitpoint();
     let send_vote = reliable_broadcast_send(chan, wait_broadcast, participants, me, data).await;
     let vote_list =
-        reliable_broadcast_receive_all(chan, wait_broadcast, participants, me, send_vote)
-            .await?;
+        reliable_broadcast_receive_all(chan, wait_broadcast, participants, me, send_vote).await?;
     Ok(vote_list)
 }
 
