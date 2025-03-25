@@ -15,7 +15,7 @@ pub fn keygen(
     threshold: usize,
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
-    let participants = assert_keygen_invariants::<E>(participants, me, threshold)?;
+    let participants = assert_keygen_invariants(participants, me, threshold)?;
     let fut = do_keygen(ctx.shared_channel(), participants, me, threshold);
     Ok(make_protocol(ctx, fut))
 }

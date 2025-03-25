@@ -73,7 +73,7 @@ fn generate_secret_polynomial<C: Ciphersuite>(
 /// Creates a commitment vector of coefficients * G
 /// If the first coefficient is set to zero then skip it
 fn generate_coefficient_commitment<C: Ciphersuite>
-    (secret_coefficients:&Vec<Scalar<C>>) -> Vec<CoefficientCommitment<C>>{
+    (secret_coefficients:&[Scalar<C>]) -> Vec<CoefficientCommitment<C>>{
 
     // we skip the zero share as neither zero scalar
     // nor identity group element are serializable
@@ -104,15 +104,13 @@ fn challenge<C: Ciphersuite>(
     // Should not return Error
     // The function should not be called when the first coefficient is zero
     let serialized_vk_share = vk_share.serialize().map_err(|_| {
-        ProtocolError::AssertionFailed(format!(
-            "The verification share could not be serialized as it is null"
-        ))
+        ProtocolError::AssertionFailed("The verification share
+        could not be serialized as it is null".to_string())
     })?;
 
     let serialized_big_r = <C::Group>::serialize(big_r).map_err(|_| {
-        ProtocolError::AssertionFailed(format!(
-            "The group element R could not be serialized as it is the identity"
-        ))
+        ProtocolError::AssertionFailed("The group element R
+        could not be serialized as it is the identity".to_string())
     })?;
 
     preimage.extend_from_slice(serialized_id.as_ref());
@@ -131,7 +129,7 @@ fn challenge<C: Ciphersuite>(
 fn proof_of_knowledge<C: Ciphersuite>(
     me: Participant,
     coefficients: &[Scalar<C>],
-    coefficient_commitment: &Vec<CoefficientCommitment<C>>,
+    coefficient_commitment: &[CoefficientCommitment<C>],
     rng: &mut OsRng,
 ) -> Result<Signature<C>, ProtocolError> {
     // creates an identifier for the participant
@@ -154,8 +152,8 @@ fn proof_of_knowledge<C: Ciphersuite>(
 fn compute_proof_of_knowledge<C: Ciphersuite>(
     me: Participant,
     old_participants: Option<ParticipantList>,
-    coefficients: &Vec<Scalar<C>>,
-    coefficient_commitment: &Vec<CoefficientCommitment<C>>,
+    coefficients: &[Scalar<C>],
+    coefficient_commitment: &[CoefficientCommitment<C>],
     rng: &mut OsRng,
 ) -> Result<Option<Signature<C>>, ProtocolError> {
     // I am allowed to send none only if I am a new participant
@@ -163,7 +161,7 @@ fn compute_proof_of_knowledge<C: Ciphersuite>(
         return Ok(None);
     };
     // generate a proof of knowledge if the participant me is not holding a secret that is zero
-    let proof = proof_of_knowledge(me, &coefficients[..], coefficient_commitment, rng)?;
+    let proof = proof_of_knowledge(me, coefficients, coefficient_commitment, rng)?;
     Ok(Some(proof))
 }
 
@@ -231,7 +229,7 @@ fn insert_identity_if_missing <C: Ciphersuite>(
 
 // evaluates a polynomial on the identifier of the participant
 fn evaluate_polynomial<C: Ciphersuite>(
-    coefficients: &Vec<Scalar<C>>,
+    coefficients: &[Scalar<C>],
     participant: Participant,
 ) -> Result<SigningShare<C>, ProtocolError> {
     let id = participant.to_identifier::<C>();
@@ -251,7 +249,7 @@ fn validate_received_share<C: Ciphersuite>(
     // The verification is exactly the same as the regular SecretShare verification;
     // however the required components are in different places.
     // Build a temporary SecretShare so what we can call verify().
-    let secret_share = SecretShare::new(id, signing_share_from.clone(), commitment.clone());
+    let secret_share = SecretShare::new(id, *signing_share_from, commitment.clone());
 
     // Verify the share. We don't need the result.
     // Identify the culprit if an InvalidSecretShare error is returned.
@@ -347,9 +345,8 @@ async fn broadcast_success_failure(
             let vote_list = vote_list.into_vec_or_none().unwrap();
             // go through all the list of votes and check if any is fail
             if vote_list.contains(&false) {
-                return Err(ProtocolError::AssertionFailed(format!(
-                    "A participant seems to have failed its checks. Aborting DKG!"
-                )));
+                return Err(ProtocolError::AssertionFailed("A participant
+                seems to have failed its checks. Aborting DKG!".to_string()));
             };
             // Wait for all the tasks to complete
             Ok(())
@@ -397,7 +394,7 @@ async fn do_keyshare<C: Ciphersuite>(
 
     // add my commitment and proof to the map
     all_commitments.put(me, commitment.clone());
-    all_proofs.put(me, proof_of_knowledge.clone());
+    all_proofs.put(me, proof_of_knowledge);
 
     // Broadcast to all the commitment and the proof of knowledge
     let commitments_and_proofs_map = do_broadcast(
@@ -420,7 +417,7 @@ async fn do_keyshare<C: Ciphersuite>(
 
         // add received commitment and proof to the map
         all_commitments.put(p, commitment_i.clone());
-        all_proofs.put(p, proof_i.clone());
+        all_proofs.put(p, *proof_i);
 
         // Securely send to each other participant a secret share
         // using the evaluation secret polynomial on the identifier of the recipient
@@ -479,9 +476,8 @@ async fn do_keyshare<C: Ciphersuite>(
     // check transcript hashes
     for their_transcript in transcript_list {
         if my_transcript != their_transcript {
-            err = Some(ProtocolError::AssertionFailed(format!(
-                "transcript hash did not match expectation"
-            )));
+            err = Some(ProtocolError::AssertionFailed("transcript
+            hash did not match expectation".to_string()));
             break;
         }
     }
@@ -509,9 +505,8 @@ async fn do_keyshare<C: Ciphersuite>(
         if let Some(pk) = public_key_package.clone() {
             // check the equality between the old key and the new key without failing the unwrap
             if vk != *pk.verifying_key() {
-                err = Some(ProtocolError::AssertionFailed(format!(
-                    "new public key does not match old public key"
-                )));
+                err = Some(ProtocolError::AssertionFailed("new public
+                key does not match old public key".to_string()));
             }
         };
     };
@@ -555,7 +550,7 @@ pub (crate) async fn do_keygen<C: Ciphersuite>(
 
 /// This function is to be called before running DKG
 /// It ensures that the input parameters are valid
-pub (crate) fn assert_keygen_invariants<C: Ciphersuite>(
+pub (crate) fn assert_keygen_invariants(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
