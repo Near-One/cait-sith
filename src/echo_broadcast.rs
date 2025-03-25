@@ -268,14 +268,12 @@ where
 
                     // Output error if the received vote after broadcast is not
                     // the same as the one originally sent
-                    if sid == participants.index(&me) {
-                        if MessageType::Send(data) != send_vote {
-                            return Err(ProtocolError::AssertionFailed(format!(
-                                "Too many malicious parties, way above the assumed threshold:
-                                The message output after the broadcast protocol is not the same as
-                                the one originally sent by me"
-                            )));
-                        }
+                    if sid == participants.index(&me) && MessageType::Send(data) != send_vote {
+                        return Err(ProtocolError::AssertionFailed(format!(
+                            "Too many malicious parties, way above the assumed threshold:
+                            The message output after the broadcast protocol is not the same as
+                            the one originally sent by me"
+                        )));
                     }
 
                     // if all the ready slots are set to true

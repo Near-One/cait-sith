@@ -46,12 +46,12 @@
 //! Then, the parties need to generate a key pair so that they can sign messages:
 //!
 //! - The parties run a distributed key generation protocol to setup a new key pair,
-//! which can be used for many signatures.
+//!   which can be used for many signatures.
 //!
 //! When the parties want to sign using a given key:
 //!
 //! - Using their shares of a private key, the parties can create a *presignature*,
-//! before knowing the message to sign.
+//!   before knowing the message to sign.
 //! - Once they know this message, they can use the presignature to create a complete signature.
 //!
 //! It's important that presignatures and triples are **never** reused.

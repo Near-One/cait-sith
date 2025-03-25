@@ -128,9 +128,9 @@ pub async fn combine_signature_shares<C: CSCurve>(
     presignature_big_r: C::AffinePoint,
     msg_hash: C::Scalar,
 ) -> Result<FullSignature<C>, ProtocolError> {
-    let mut s: C::Scalar = shares[0].into();
+    let mut s: C::Scalar = shares[0];
     for s_j in shares.iter().skip(1) {
-        s += C::Scalar::from(*s_j)
+        s += *s_j
     }
 
     // Spec 2.3

@@ -26,10 +26,12 @@ fn assert_keyshare_inputs<C: Ciphersuite>(
     old_reshare_package: Option<(VerifyingKey<C>, ParticipantList)>,
 ) -> Result<(Option<VerifyingKey<C>>, Option<ParticipantList>), ProtocolError> {
     let is_zero_secret = *secret == <C::Group as Group>::Field::zero();
-    if old_reshare_package.is_some() {
-        let (old_key, old_participants) = old_reshare_package.unwrap();
+
+    if let Some((old_key, old_participants)) = old_reshare_package {
         if is_zero_secret {
             //  return error if me is not a purely new joiner to the participants set
+            //  prevents accidentally calling keyshare with extremely old keyshares
+            //  that have nothing todo with the current resharing
             if old_participants.contains(me) {
                 return Err(ProtocolError::AssertionFailed(
                     format!("{me:?} is running DKG with a zero share but does belong to the old participant set")));
@@ -345,7 +347,7 @@ async fn broadcast_success_failure(
                 )));
             };
             // Wait for all the tasks to complete
-            return Ok(());
+            Ok(())
         }
     }
 }

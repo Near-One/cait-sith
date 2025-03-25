@@ -210,7 +210,7 @@ impl<'a, T> ParticipantMap<'a, T> {
             let Some(data) = d else { return None };
             vec_data.push(data)
         }
-        return Some(vec_data);
+        Some(vec_data)
     }
 }
 

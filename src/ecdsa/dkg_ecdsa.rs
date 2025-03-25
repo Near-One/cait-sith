@@ -32,7 +32,7 @@ pub fn reshare(
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let threshold = new_threshold;
-    let old_public_key = old_public_key.verifying_key().clone();
+    let old_public_key = *old_public_key.verifying_key();
     let (participants,old_participants) = reshare_assertions::<E>(new_participants, me, threshold, old_signing_key, old_threshold, old_participants)?;
     let fut = do_reshare(ctx.shared_channel(), participants, me, threshold, old_signing_key, old_public_key, old_participants);
     Ok(make_protocol(ctx, fut))
@@ -53,7 +53,7 @@ pub fn refresh(
     }
     let ctx = Context::new();
     let threshold = new_threshold;
-    let old_public_key = old_public_key.verifying_key().clone();
+    let old_public_key = *old_public_key.verifying_key();
     let (participants,old_participants) = reshare_assertions::<E>(new_participants, me, threshold, old_signing_key, threshold, new_participants)?;
     let fut = do_reshare(ctx.shared_channel(), participants, me, threshold, old_signing_key, old_public_key, old_participants);
     Ok(make_protocol(ctx, fut))
