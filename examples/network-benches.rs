@@ -3,11 +3,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use cait_sith::{
-    keygen, presign,
-    protocol::{Action, MessageData, Participant, Protocol},
-    sign, triples, PresignArguments,
-};
 use digest::{Digest, FixedOutput};
 use easy_parallel::Parallel;
 use ecdsa::hazmat::DigestPrimitive;
@@ -17,6 +12,11 @@ use haisou_chan::{channel, Bandwidth};
 use k256::{FieldBytes, Scalar, Secp256k1};
 use rand_core::OsRng;
 use structopt::StructOpt;
+use cait_sith::ecdsa::dkg_ecdsa::keygen;
+use cait_sith::ecdsa::presign::{presign, PresignArguments};
+use cait_sith::ecdsa::sign::sign;
+use cait_sith::ecdsa::triples;
+use cait_sith::protocol::{Action, MessageData, Participant, Protocol};
 
 fn scalar_hash(msg: &[u8]) -> Scalar {
     let digest = <Secp256k1 as DigestPrimitive>::Digest::new_with_prefix(msg);
@@ -252,7 +252,7 @@ fn main() {
     );
     let start = Instant::now();
     let results = run_protocol(latency, bandwidth, &participants, |p| {
-        triples::generate_triple::<Secp256k1>(&participants, p, args.parties as usize).unwrap()
+        triples::generate_triple::<Secp256k1>(&participants, p, 3).unwrap()
     });
     let stop = Instant::now();
     println!("time:\t{:#?}", stop.duration_since(start));
@@ -266,7 +266,7 @@ fn main() {
     );
     let start = Instant::now();
     let results = run_protocol(latency, bandwidth, &participants, |p| {
-        keygen(&participants, p, args.parties as usize).unwrap()
+        keygen(&participants, p, 3).unwrap()
     });
     let stop = Instant::now();
     println!("time:\t{:#?}", stop.duration_since(start));
@@ -275,7 +275,7 @@ fn main() {
     let shares: HashMap<_, _> = results.into_iter().map(|(p, _, out)| (p, out)).collect();
 
     let (other_triples_pub, other_triples_share) =
-        triples::deal(&mut OsRng, &participants, args.parties as usize);
+        triples::deal(&mut OsRng, &participants, 3);
     let other_triples: HashMap<_, _> = participants
         .iter()
         .zip(other_triples_share)
@@ -297,7 +297,7 @@ fn main() {
                 triple0: triples[&p].clone(),
                 triple1: other_triples[&p].clone(),
                 keygen_out: shares[&p].clone(),
-                threshold: args.parties as usize,
+                threshold: 3,
             },
         )
         .unwrap()
