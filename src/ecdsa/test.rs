@@ -172,7 +172,7 @@ pub(crate) fn assert_public_key_invariant(
     Ok(())
 }
 
-fn run_presign(
+pub fn run_presign(
     participants: Vec<(Participant, KeygenOutput)>,
     shares0: Vec<TripleShare<Secp256k1>>,
     shares1: Vec<TripleShare<Secp256k1>>,
@@ -217,7 +217,7 @@ fn run_presign(
 }
 
 #[allow(clippy::type_complexity)]
-fn run_sign(
+pub fn run_sign(
     participants: Vec<(Participant, PresignOutput<Secp256k1>)>,
     public_key: AffinePoint,
     msg: &[u8],

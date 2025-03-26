@@ -279,7 +279,9 @@ pub fn sign_participant(
 #[cfg(test)]
 mod tests {
     use crate::crypto::hash;
-    use frost_ed25519::Signature;
+    use crate::participants::ParticipantList;
+    use frost_core::{Field, Group};
+    use frost_ed25519::{Ed25519Group, Ed25519ScalarField, Ed25519Sha512, Signature};
 
     use crate::eddsa::test::{
         assert_public_key_invariant, build_key_packages_with_dealer, run_keygen, run_refresh,
@@ -445,7 +447,7 @@ mod tests {
             &key_packages2,
             actual_signers,
             coordinators,
-            threshold,
+            new_threshold,
             msg_hash,
         )
         .unwrap();
@@ -457,6 +459,157 @@ mod tests {
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_reshare_sign_more_participants() -> Result<(), Box<dyn Error>> {
+        let participants = vec![
+            Participant::from(0u32),
+            Participant::from(1u32),
+            Participant::from(2u32),
+            Participant::from(3u32),
+            Participant::from(4u32),
+        ];
+        let threshold = 3;
+        let result0 = run_keygen(&participants, threshold)?;
+        assert_public_key_invariant(&result0)?;
+
+        let pub_key = result0[2].1.public_key_package.clone();
+
+        // Run heavy reshare
+        let new_threshold = 5;
+        let mut new_participant = participants.clone();
+        new_participant.push(Participant::from(31u32));
+        new_participant.push(Participant::from(32u32));
+        new_participant.push(Participant::from(33u32));
+        let key_packages = run_reshare(
+            &participants,
+            &pub_key,
+            result0,
+            threshold,
+            new_threshold,
+            new_participant,
+        )?;
+        assert_public_key_invariant(&key_packages)?;
+
+        let participants: Vec<_> = key_packages
+            .iter()
+            .take(key_packages.len())
+            .map(|(val, _)| *val)
+            .collect();
+        let shares: Vec<_> = key_packages
+            .iter()
+            .take(key_packages.len())
+            .map(|(_, keygen)| keygen.private_share.to_scalar())
+            .collect();
+
+        // Test public key
+        let p_list = ParticipantList::new(&participants).unwrap();
+        let mut x = Ed25519ScalarField::zero();
+        for (p, share) in participants.iter().zip(shares.iter()) {
+            x += p_list.generic_lagrange::<Ed25519Sha512>(*p) * share;
+        }
+        assert_eq!(
+            <Ed25519Group>::generator() * x,
+            pub_key.verifying_key().to_element()
+        );
+
+        // Sign
+        let actual_signers = participants.len();
+        let coordinators = 1;
+        let msg = "hello_near";
+        let msg_hash = hash(&msg);
+
+        let data = run_signature_protocols(
+            &key_packages,
+            actual_signers,
+            coordinators,
+            new_threshold,
+            msg_hash,
+        )
+        .unwrap();
+        let signature = assert_single_coordinator_result(data);
+        assert!(key_packages[0]
+            .1
+            .public_key_package
+            .verifying_key()
+            .verify(msg_hash.as_ref(), &signature)
+            .is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn test_reshare_sign_less_participants() -> Result<(), Box<dyn Error>> {
+        let participants = vec![
+            Participant::from(0u32),
+            Participant::from(1u32),
+            Participant::from(2u32),
+            Participant::from(3u32),
+            Participant::from(4u32),
+        ];
+        let threshold = 4;
+        let result0 = run_keygen(&participants, threshold)?;
+        assert_public_key_invariant(&result0)?;
+
+        let pub_key = result0[2].1.public_key_package.clone();
+
+        // Run heavy reshare
+        let new_threshold = 3;
+        let mut new_participant = participants.clone();
+        new_participant.pop();
+        let key_packages = run_reshare(
+            &participants,
+            &pub_key,
+            result0,
+            threshold,
+            new_threshold,
+            new_participant,
+        )?;
+        assert_public_key_invariant(&key_packages)?;
+
+        let participants: Vec<_> = key_packages
+            .iter()
+            .take(key_packages.len())
+            .map(|(val, _)| *val)
+            .collect();
+        let shares: Vec<_> = key_packages
+            .iter()
+            .take(key_packages.len())
+            .map(|(_, keygen)| keygen.private_share.to_scalar())
+            .collect();
+
+        // Test public key
+        let p_list = ParticipantList::new(&participants).unwrap();
+        let mut x = Ed25519ScalarField::zero();
+        for (p, share) in participants.iter().zip(shares.iter()) {
+            x += p_list.generic_lagrange::<Ed25519Sha512>(*p) * share;
+        }
+        assert_eq!(
+            <Ed25519Group>::generator() * x,
+            pub_key.verifying_key().to_element()
+        );
+
+        // Sign
+        let coordinators = 1;
+        let msg = "hello_near";
+        let msg_hash = hash(&msg);
+
+        let data = run_signature_protocols(
+            &key_packages,
+            new_threshold,
+            coordinators,
+            new_threshold,
+            msg_hash,
+        )
+        .unwrap();
+        let signature = assert_single_coordinator_result(data);
+        assert!(key_packages[0]
+            .1
+            .public_key_package
+            .verifying_key()
+            .verify(msg_hash.as_ref(), &signature)
+            .is_ok());
         Ok(())
     }
 }
