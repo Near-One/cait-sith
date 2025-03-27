@@ -252,7 +252,7 @@ fn main() {
     );
     let start = Instant::now();
     let results = run_protocol(latency, bandwidth, &participants, |p| {
-        triples::generate_triple::<Secp256k1>(&participants, p, 3).unwrap()
+        triples::generate_triple::<Secp256k1>(&participants, p, args.parties as usize).unwrap()
     });
     let stop = Instant::now();
     println!("time:\t{:#?}", stop.duration_since(start));
@@ -266,7 +266,7 @@ fn main() {
     );
     let start = Instant::now();
     let results = run_protocol(latency, bandwidth, &participants, |p| {
-        keygen(&participants, p, 3).unwrap()
+        keygen(&participants, p, args.parties as usize).unwrap()
     });
     let stop = Instant::now();
     println!("time:\t{:#?}", stop.duration_since(start));
@@ -275,7 +275,7 @@ fn main() {
     let shares: HashMap<_, _> = results.into_iter().map(|(p, _, out)| (p, out)).collect();
 
     let (other_triples_pub, other_triples_share) =
-        triples::deal(&mut OsRng, &participants, 3);
+        triples::deal(&mut OsRng, &participants, args.parties as usize);
     let other_triples: HashMap<_, _> = participants
         .iter()
         .zip(other_triples_share)
@@ -297,7 +297,7 @@ fn main() {
                 triple0: triples[&p].clone(),
                 triple1: other_triples[&p].clone(),
                 keygen_out: shares[&p].clone(),
-                threshold: 3,
+                threshold: args.parties as usize,
             },
         )
         .unwrap()
