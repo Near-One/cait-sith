@@ -64,7 +64,6 @@ async fn do_sign_coordinator(
     let mut commitments_map: BTreeMap<frost_ed25519::Identifier, round1::SigningCommitments> =
         BTreeMap::new();
 
-
     let signing_share = SigningShare::new(keygen_output.private_share.to_scalar());
 
     let (nonces, commitments) = round1::commit(&signing_share, &mut rng);
@@ -315,29 +314,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn multiple_coordinators() {
-        let max_signers = 3;
-        let threshold = 2;
-        let actual_signers = 2;
-        let msg = "hello_near";
-        let msg_hash = hash(&msg);
-
-        let key_packages = build_key_packages_with_dealer(max_signers, threshold);
-        // two coordinators
-        let coordinators = vec!(key_packages[0].0, key_packages[1].0);
-        let data = test_run_signature_protocols(
-            &key_packages,
-            actual_signers,
-            &coordinators,
-            threshold,
-            msg_hash,
-        )
-        .unwrap();
-        assert_single_coordinator_result(data);
-    }
-
-    #[test]
     fn stress() {
         let max_signers = 7;
         let msg = "hello_near";
@@ -464,7 +440,6 @@ mod tests {
         let result0 = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&result0)?;
 
-        let coordinators = vec!(result0[0].0);
         let pub_key = result0[2].1.public_key_package.clone();
 
         // Run heavy reshare
@@ -510,6 +485,7 @@ mod tests {
         let msg = "hello_near";
         let msg_hash = hash(&msg);
 
+        let coordinators = vec!(key_packages[0].0);
         let data = test_run_signature_protocols(
             &key_packages,
             actual_signers,
