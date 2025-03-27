@@ -16,3 +16,8 @@ pub mod dkg_ed25519;
 pub mod sign;
 #[cfg(test)]
 mod test;
+mod kdf;
+
+pub use kdf::derive_keygen_output;
+
+

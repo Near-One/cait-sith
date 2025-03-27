@@ -2,7 +2,6 @@
 
 use frost_secp256k1::Secp256K1Sha256;
 use crate::generic_dkg::{BytesOrder, Ciphersuite, ScalarSerializationFormat};
-use elliptic_curve::CurveArithmetic;
 use frost_secp256k1::*;
 use k256::Secp256k1;
 use serde::{Deserialize, Serialize};
