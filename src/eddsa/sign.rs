@@ -10,12 +10,6 @@ use frost_ed25519::*;
 use rand_core::OsRng;
 use std::collections::BTreeMap;
 
-/// Coordinator sends this message to other participants to:
-///     (a) indicate the start of the protocol
-///     (b) claim `Coordinator` role
-#[derive(serde::Serialize, serde::Deserialize)]
-struct InitMessage();
-
 /// A function that takes a signing share and a keygenOutput
 /// and construct a public key package used for frost signing
 fn construct_key_package(
@@ -38,6 +32,11 @@ fn construct_key_package(
     )
 }
 
+pub enum SignatureOutput{
+    Exist(Signature), // only for coordinators
+    NoSignature, // only for participants
+}
+
 /// Returns a future that executes signature protocol for *the Coordinator*.
 ///
 /// WARNING: Extracted from FROST documentation:
@@ -47,14 +46,14 @@ fn construct_key_package(
 /// creating a specific ciphersuite for this, and not just sending the hash
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
-pub(crate) async fn do_sign_coordinator(
+async fn do_sign_coordinator(
     mut chan: SharedChannel,
     participants: ParticipantList,
     threshold: usize,
     me: Participant,
     keygen_output: KeygenOutput,
     message: Vec<u8>,
-) -> Result<Signature, ProtocolError> {
+) -> Result<SignatureOutput, ProtocolError> {
     let mut seen = ParticipantCounter::new(&participants);
     let mut rng = OsRng;
 
@@ -65,8 +64,6 @@ pub(crate) async fn do_sign_coordinator(
     let mut commitments_map: BTreeMap<frost_ed25519::Identifier, round1::SigningCommitments> =
         BTreeMap::new();
 
-    let r1_wait_point = chan.next_waitpoint();
-    chan.send_many(r1_wait_point, &InitMessage()).await;
 
     let signing_share = SigningShare::new(keygen_output.private_share.to_scalar());
 
@@ -74,8 +71,9 @@ pub(crate) async fn do_sign_coordinator(
     commitments_map.insert(me.to_identifier(), commitments);
     seen.put(me);
 
+    let commit_waitpoint = chan.next_waitpoint();
     while !seen.full() {
-        let (from, commitment): (_, round1::SigningCommitments) = chan.recv(r1_wait_point).await?;
+        let (from, commitment): (_, round1::SigningCommitments) = chan.recv(commit_waitpoint).await?;
 
         if !seen.put(from) {
             continue;
@@ -120,7 +118,7 @@ pub(crate) async fn do_sign_coordinator(
     let signature = frost_ed25519::aggregate(&signing_package, &signature_shares, &vk_package)
         .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
 
-    Ok(signature)
+    Ok(SignatureOutput::Exist(signature))
 }
 
 /// Returns a future that executes signature protocol for *a Participant*.
@@ -132,14 +130,22 @@ pub(crate) async fn do_sign_coordinator(
 /// creating a specific ciphersuite for this, and not just sending the hash
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
-pub(crate) async fn do_sign_participant(
+async fn do_sign_participant(
     mut chan: SharedChannel,
     threshold: usize,
     me: Participant,
+    coordinator: Participant,
     keygen_output: KeygenOutput,
     message: Vec<u8>,
-) -> Result<(), ProtocolError> {
+) -> Result<SignatureOutput, ProtocolError> {
     let mut rng = OsRng;
+    if coordinator == me {
+        return Err(ProtocolError::AssertionFailed(
+            "the do_sign_participant function cannot be called
+            for a coordinator".to_string()
+        ))
+    }
+
     // create signing share out of private_share
     let signing_share = SigningShare::new(keygen_output.private_share.to_scalar());
 
@@ -149,9 +155,8 @@ pub(crate) async fn do_sign_participant(
     // * Wait for an initial message from a coordinator.
     // * Send coordinator our commitment.
 
-    let r1_wait_point = chan.next_waitpoint();
-    let (coordinator, _): (_, InitMessage) = chan.recv(r1_wait_point).await?;
-    chan.send_private(r1_wait_point, coordinator, &commitments)
+    let commit_waitpoint = chan.next_waitpoint();
+    chan.send_private(commit_waitpoint, coordinator, &commitments)
         .await;
 
     // --- Round 2.
@@ -184,10 +189,11 @@ pub(crate) async fn do_sign_participant(
     chan.send_private(r2_wait_point, coordinator, &signature_share)
         .await;
 
-    Ok(())
+    Ok(SignatureOutput::NoSignature)
 }
 
-/// Runs signature protocol on the coordinator side.
+/// Depending on whether the current participant is a coordinator or not,
+/// runs the signature protocol as either a participant or a coordinator.
 ///
 /// WARNING: Extracted from FROST documentation:
 /// In all of the main FROST ciphersuites, the entire message must be sent
@@ -196,62 +202,14 @@ pub(crate) async fn do_sign_participant(
 /// creating a specific ciphersuite for this, and not just sending the hash
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
-pub fn sign_coordinator(
+pub fn sign(
     participants: &[Participant],
     threshold: usize,
     me: Participant,
+    coordinator: Participant,
     keygen_output: KeygenOutput,
     message: Vec<u8>,
-) -> Result<impl Protocol<Output = Signature>, InitializationError> {
-    if participants.len() < 2 {
-        return Err(InitializationError::BadParameters(format!(
-            "participant count cannot be < 2, found: {}",
-            participants.len()
-        )));
-    };
-    let Some(participants) = ParticipantList::new(participants) else {
-        return Err(InitializationError::BadParameters(
-            "
-        Participants list contains duplicates"
-                .to_string(),
-        ));
-    };
-
-    // ensure my presence in the participant list
-    if !participants.contains(me) {
-        return Err(InitializationError::BadParameters(
-            "participant list must contain this participant".to_string(),
-        ));
-    };
-
-    let ctx = Context::new();
-    let fut = do_sign_coordinator(
-        ctx.shared_channel(),
-        participants,
-        threshold,
-        me,
-        keygen_output,
-        message,
-    );
-    Ok(make_protocol(ctx, fut))
-}
-
-/// Runs signature protocol on the participant side.
-///
-/// WARNING: Extracted from FROST documentation:
-/// In all of the main FROST ciphersuites, the entire message must be sent
-/// to participants. In some cases, where the message is too big, it may be
-/// necessary to send a hash of the message instead. We strongly suggest
-/// creating a specific ciphersuite for this, and not just sending the hash
-/// as if it were the message.
-/// For reference, see how RFC 8032 handles "pre-hashing".
-pub fn sign_participant(
-    participants: &[Participant],
-    threshold: usize,
-    me: Participant,
-    keygen_output: KeygenOutput,
-    message: Vec<u8>,
-) -> Result<impl Protocol<Output = ()>, InitializationError> {
+) -> Result<Box<dyn Protocol<Output = SignatureOutput>>, InitializationError> {
     if participants.len() < 2 {
         return Err(InitializationError::BadParameters(format!(
             "participant count cannot be < 2, found: {}",
@@ -267,14 +225,41 @@ pub fn sign_participant(
     // ensure my presence in the participant list
     if !participants.contains(me) {
         return Err(InitializationError::BadParameters(
-            "participant list must contain this participant".to_string(),
+            format!("participant list must contain {me:?}")
+        ));
+    };
+    // ensure the coordinator is a participant
+    if !participants.contains(coordinator) {
+        return Err(InitializationError::BadParameters(
+            format!("participant list must contain coordinator {coordinator:?}")
         ));
     };
 
     let ctx = Context::new();
-    let fut = do_sign_participant(ctx.shared_channel(), threshold, me, keygen_output, message);
-    Ok(make_protocol(ctx, fut))
+    let chan = ctx.shared_channel();
+    if me == coordinator{
+        let fut = do_sign_coordinator(
+            chan,
+            participants,
+            threshold,
+            me,
+            keygen_output,
+            message,
+        );
+        Ok(Box::new(make_protocol(ctx, fut)))
+    } else {
+        let fut = do_sign_participant(
+            chan,
+            threshold,
+            me,
+            coordinator,
+            keygen_output,
+            message
+        );
+        Ok(Box::new(make_protocol(ctx, fut)))
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -285,21 +270,23 @@ mod tests {
 
     use crate::eddsa::test::{
         assert_public_key_invariant, build_key_packages_with_dealer, run_keygen, run_refresh,
-        run_reshare, run_signature_protocols, IsSignature,
+        run_reshare, test_run_signature_protocols
     };
     use crate::protocol::Participant;
     use std::error::Error;
 
-    fn assert_single_coordinator_result(data: Vec<(Participant, IsSignature)>) -> Signature {
+    use super::SignatureOutput;
+
+    fn assert_single_coordinator_result(data: Vec<(Participant, SignatureOutput)>) -> Signature {
         let mut signature = None;
         let count = data
             .iter()
             .filter(|(_, output)| match output {
-                Some(s) => {
+                SignatureOutput::Exist(s) => {
                     signature = Some(*s);
                     true
                 }
-                None => false,
+                SignatureOutput::NoSignature => false,
             })
             .count();
         assert_eq!(count, 1);
@@ -311,15 +298,15 @@ mod tests {
         let max_signers = 2;
         let threshold = 2;
         let actual_signers = 2;
-        let coordinators = 1;
         let msg = "hello_near";
         let msg_hash = hash(&msg);
 
         let key_packages = build_key_packages_with_dealer(max_signers, threshold);
-        let data = run_signature_protocols(
+        let coordinators = vec!(key_packages[0].0);
+        let data = test_run_signature_protocols(
             &key_packages,
             actual_signers,
-            coordinators,
+            &coordinators,
             threshold,
             msg_hash,
         )
@@ -333,15 +320,16 @@ mod tests {
         let max_signers = 3;
         let threshold = 2;
         let actual_signers = 2;
-        let coordinators = 2;
         let msg = "hello_near";
         let msg_hash = hash(&msg);
 
         let key_packages = build_key_packages_with_dealer(max_signers, threshold);
-        let data = run_signature_protocols(
+        // two coordinators
+        let coordinators = vec!(key_packages[0].0, key_packages[1].0);
+        let data = test_run_signature_protocols(
             &key_packages,
             actual_signers,
-            coordinators,
+            &coordinators,
             threshold,
             msg_hash,
         )
@@ -352,17 +340,17 @@ mod tests {
     #[test]
     fn stress() {
         let max_signers = 7;
-        let coordinators = 1;
         let msg = "hello_near";
         let msg_hash = hash(&msg);
 
         for min_signers in 2..max_signers {
             for actual_signers in min_signers..=max_signers {
                 let key_packages = build_key_packages_with_dealer(max_signers, min_signers);
-                let data = run_signature_protocols(
+                let coordinators = vec!(key_packages[0].0);
+                let data = test_run_signature_protocols(
                     &key_packages,
                     actual_signers,
-                    coordinators,
+                    &coordinators,
                     min_signers,
                     msg_hash,
                 )
@@ -381,7 +369,6 @@ mod tests {
             Participant::from(2u32),
         ];
         let actual_signers = participants.len();
-        let coordinators = 1;
         let threshold = 2;
         let msg = "hello_near";
         let msg_hash = hash(&msg);
@@ -389,10 +376,11 @@ mod tests {
         // test dkg
         let key_packages = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&key_packages)?;
-        let data = run_signature_protocols(
+        let coordinators = vec!(key_packages[0].0);
+        let data = test_run_signature_protocols(
             &key_packages,
             actual_signers,
-            coordinators,
+            &coordinators,
             threshold,
             msg_hash,
         )
@@ -411,10 +399,10 @@ mod tests {
         assert_public_key_invariant(&key_packages1)?;
         let msg = "hello_near_2";
         let msg_hash = hash(&msg);
-        let data = run_signature_protocols(
+        let data = test_run_signature_protocols(
             &key_packages1,
             actual_signers,
-            coordinators,
+            &coordinators,
             threshold,
             msg_hash,
         )
@@ -443,10 +431,11 @@ mod tests {
         assert_public_key_invariant(&key_packages2)?;
         let msg = "hello_near_3";
         let msg_hash = hash(&msg);
-        let data = run_signature_protocols(
+        let coordinators = vec!(key_packages2[0].0);
+        let data = test_run_signature_protocols(
             &key_packages2,
             actual_signers,
-            coordinators,
+            &coordinators,
             new_threshold,
             msg_hash,
         )
@@ -475,6 +464,7 @@ mod tests {
         let result0 = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&result0)?;
 
+        let coordinators = vec!(result0[0].0);
         let pub_key = result0[2].1.public_key_package.clone();
 
         // Run heavy reshare
@@ -517,14 +507,13 @@ mod tests {
 
         // Sign
         let actual_signers = participants.len();
-        let coordinators = 1;
         let msg = "hello_near";
         let msg_hash = hash(&msg);
 
-        let data = run_signature_protocols(
+        let data = test_run_signature_protocols(
             &key_packages,
             actual_signers,
-            coordinators,
+            &coordinators,
             new_threshold,
             msg_hash,
         )
@@ -551,6 +540,7 @@ mod tests {
         let threshold = 4;
         let result0 = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&result0)?;
+        let coordinators = vec!(result0[0].0);
 
         let pub_key = result0[2].1.public_key_package.clone();
 
@@ -591,14 +581,13 @@ mod tests {
         );
 
         // Sign
-        let coordinators = 1;
         let msg = "hello_near";
         let msg_hash = hash(&msg);
 
-        let data = run_signature_protocols(
+        let data = test_run_signature_protocols(
             &key_packages,
             new_threshold,
-            coordinators,
+            &coordinators,
             new_threshold,
             msg_hash,
         )
