@@ -22,6 +22,8 @@ pub enum ProtocolError {
     DKGNotSupported,
     /// Could not extract the verification Key from a commitment.
     ErrorExtractVerificationKey,
+    /// The sent commitment hash does not equal the hash of the sent commitment
+    InvalidCommitmentHash,
     /// Incorrect number of commitments.
     IncorrectNumberOfCommitments,
     /// The identifier of the signer whose share validation failed.
@@ -50,6 +52,9 @@ impl fmt::Display for ProtocolError {
                 f,
                 "could not extract the verification Key from the commitment."
             ),
+            ProtocolError::InvalidCommitmentHash => {
+                write!(f, "the sent commitment_hash does not equals the hash of the commitment")
+            }
             ProtocolError::IncorrectNumberOfCommitments => {
                 write!(f, "incorrect number of commitments")
             }
