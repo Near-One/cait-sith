@@ -1,4 +1,5 @@
 use frost_secp256k1::*;
+use frost_secp256k1::keys::SigningShare;
 use futures::FutureExt;
 use k256::Secp256k1;
 use crate::ecdsa::KeygenOutput;
@@ -25,7 +26,7 @@ pub fn keygen(
 pub fn reshare(
     old_participants: &[Participant],
     old_threshold: usize,
-    old_signing_key: Option<SigningKey>,
+    old_signing_key: Option<SigningShare>,
     old_public_key: VerifyingKey,
     new_participants: &[Participant],
     new_threshold: usize,
@@ -56,7 +57,7 @@ pub fn reshare(
 
 /// Performs the Ed25519 Refresh protocol
 pub fn refresh(
-    old_signing_key: Option<SigningKey>,
+    old_signing_key: Option<SigningShare>,
     old_public_key: VerifyingKey,
     new_participants: &[Participant],
     new_threshold: usize,

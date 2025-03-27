@@ -144,10 +144,7 @@ async fn do_sign_participant(
         ));
     }
 
-    // create signing share out of private_share
-    let signing_share = SigningShare::new(keygen_output.private_share.to_scalar());
-
-    let (nonces, commitments) = round1::commit(&signing_share, &mut rng);
+    let (nonces, commitments) = round1::commit(&keygen_output.private_share, &mut rng);
 
     // --- Round 1.
     // * Wait for an initial message from a coordinator.
@@ -179,7 +176,7 @@ async fn do_sign_participant(
     }
 
     let vk_package = keygen_output.public_key_package;
-    let key_package = construct_key_package(threshold, &me, &signing_share, &vk_package);
+    let key_package = construct_key_package(threshold, &me, &keygen_output.private_share, &vk_package);
 
     let signature_share = round2::sign(&signing_package, &nonces, &key_package)
         .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;

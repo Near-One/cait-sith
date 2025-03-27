@@ -396,7 +396,7 @@ async fn do_keyshare<C: Ciphersuite>(
     secret: Scalar<C>,
     old_reshare_package: Option<(VerifyingKey<C>, ParticipantList)>,
     mut rng: OsRng,
-) -> Result<(SigningKey<C>, PublicKeyPackage<C>), ProtocolError> {
+) -> Result<(SigningShare<C>, PublicKeyPackage<C>), ProtocolError> {
     let mut all_commitments = ParticipantMap::new(&participants);
     let mut all_proofs = ParticipantMap::new(&participants);
 
@@ -541,8 +541,7 @@ async fn do_keyshare<C: Ciphersuite>(
 
     // Construct the keypairs
     // Construct the signing share
-    let signing_share = SigningKey::<C>::from_scalar(my_signing_share)
-        .map_err(|_| ProtocolError::MalformedSigningKey)?;
+    let signing_share = SigningShare::new(my_signing_share);
     // cannot fail as all_commitments at least contains my commitment
     let all_commitments_vec = all_full_commitments.into_vec_or_none().unwrap();
     let all_commitments_refs = all_commitments_vec.iter().collect();
@@ -585,7 +584,7 @@ async fn do_keyshare<C: Ciphersuite>(
 /// This contains our share of the private key, along with the public key.
 #[derive(Debug, Clone)]
 pub struct KeygenOutput<C: Ciphersuite> {
-    pub private_share: SigningKey<C>,
+    pub private_share: SigningShare<C>,
     pub public_key_package: PublicKeyPackage<C>,
 }
 
@@ -649,7 +648,7 @@ pub(crate) async fn do_reshare<C: Ciphersuite>(
     participants: ParticipantList,
     me: Participant,
     threshold: usize,
-    old_signing_key: Option<SigningKey<C>>,
+    old_signing_key: Option<SigningShare<C>>,
     old_public_key: VerifyingKey<C>,
     old_participants: ParticipantList,
 ) -> Result<KeygenOutput<C>, ProtocolError> {
@@ -684,7 +683,7 @@ pub(crate) fn reshare_assertions<C: Ciphersuite>(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
-    old_signing_key: Option<SigningKey<C>>,
+    old_signing_key: Option<SigningShare<C>>,
     old_threshold: usize,
     old_participants: &[Participant],
 ) -> Result<(ParticipantList, ParticipantList), InitializationError> {
