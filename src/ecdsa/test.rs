@@ -286,13 +286,14 @@ fn test_e2e() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_e2e_random_identifiers() -> Result<(), Box<dyn Error>> {
     let participants_count = 3;
-    let participants: Vec<_> = (0..participants_count)
+    let mut participants: Vec<_> = (0..participants_count)
         .map(|_| Participant::from(rand::random::<u32>()))
         .collect();
     let threshold = 3;
 
     let mut keygen_result = run_keygen(&participants.clone(), threshold)?;
     keygen_result.sort_by_key(|(p, _)| *p);
+    let participants = keygen_result.iter().map(|(p, _)| *p).collect::<Vec<_>>();
 
     let public_key = keygen_result[0].1.public_key_package.clone();
     assert_eq!(
