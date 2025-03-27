@@ -53,7 +53,10 @@ impl fmt::Display for ProtocolError {
                 "could not extract the verification Key from the commitment."
             ),
             ProtocolError::InvalidCommitmentHash => {
-                write!(f, "the sent commitment_hash does not equals the hash of the commitment")
+                write!(
+                    f,
+                    "the sent commitment_hash does not equals the hash of the commitment"
+                )
             }
             ProtocolError::IncorrectNumberOfCommitments => {
                 write!(f, "incorrect number of commitments")

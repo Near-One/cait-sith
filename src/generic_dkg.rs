@@ -220,8 +220,8 @@ fn verify_commitment_hash<C: Ciphersuite>(
 ) -> Result<(), ProtocolError> {
     let actual_commitment_hash = all_hash_commitments.index(participant);
     let commitment_hash = hash(&commitment);
-    if *actual_commitment_hash != commitment_hash{
-        return Err(ProtocolError::InvalidCommitmentHash)
+    if *actual_commitment_hash != commitment_hash {
+        return Err(ProtocolError::InvalidCommitmentHash);
     }
     Ok(())
 }
@@ -425,9 +425,9 @@ async fn do_keyshare<C: Ciphersuite>(
     let mut all_hash_commitments = ParticipantMap::new(&participants);
     all_hash_commitments.put(me, commitment_hash);
     while !all_hash_commitments.full() {
-       let (from, their_commitment_hash) = chan.recv(wait_round_1).await?;
-       all_hash_commitments.put(from, their_commitment_hash);
-   }
+        let (from, their_commitment_hash) = chan.recv(wait_round_1).await?;
+        all_hash_commitments.put(from, their_commitment_hash);
+    }
 
     // Start Round 2
     // add my commitment and proof to the map
@@ -470,7 +470,8 @@ async fn do_keyshare<C: Ciphersuite>(
         // using the evaluation secret polynomial on the identifier of the recipient
         let signing_share_to_p = evaluate_polynomial::<C>(&secret_coefficients, p)?;
         // send the evaluation privately to participant p
-        chan.send_private(wait_round_3, p, &signing_share_to_p).await;
+        chan.send_private(wait_round_3, p, &signing_share_to_p)
+            .await;
     }
 
     // compute transcript hash
