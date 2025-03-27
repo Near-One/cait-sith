@@ -100,11 +100,12 @@ mod test {
 
     #[test]
     fn test_keygen() -> Result<(), Box<dyn Error>> {
-        let participants = vec![
+        let mut participants = vec![
             Participant::from(31u32),
             Participant::from(1u32),
             Participant::from(2u32),
         ];
+        participants.sort();
         let threshold = 3;
 
         let result = run_keygen(&participants, threshold)?;
