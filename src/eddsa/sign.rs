@@ -32,10 +32,7 @@ fn construct_key_package(
     )
 }
 
-pub enum SignatureOutput{
-    Exist(Signature), // only for coordinators
-    NoSignature, // only for participants
-}
+pub type SignatureOutput = Option<Signature>; // None for participants and Some for coordinator
 
 /// Returns a future that executes signature protocol for *the Coordinator*.
 ///
@@ -117,7 +114,7 @@ async fn do_sign_coordinator(
     let signature = frost_ed25519::aggregate(&signing_package, &signature_shares, &vk_package)
         .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
 
-    Ok(SignatureOutput::Exist(signature))
+    Ok(Some(signature))
 }
 
 /// Returns a future that executes signature protocol for *a Participant*.
@@ -188,7 +185,7 @@ async fn do_sign_participant(
     chan.send_private(r2_wait_point, coordinator, &signature_share)
         .await;
 
-    Ok(SignatureOutput::NoSignature)
+    Ok(None)
 }
 
 /// Depending on whether the current participant is a coordinator or not,
@@ -281,11 +278,11 @@ mod tests {
         let count = data
             .iter()
             .filter(|(_, output)| match output {
-                SignatureOutput::Exist(s) => {
+                Some(s) => {
                     signature = Some(*s);
                     true
                 }
-                SignatureOutput::NoSignature => false,
+                None => false,
             })
             .count();
         assert_eq!(count, 1);
