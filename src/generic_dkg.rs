@@ -461,7 +461,6 @@ async fn do_keyshare<C: Ciphersuite>(
     // hash commitment and send it
     let commit_domain_separator = domain_separator;
     let commitment_hash = domain_separate_hash(domain_separator, &(&me, &commitment, &session_id));
-    domain_separator += 1;
     let wait_round_1 = chan.next_waitpoint();
     chan.send_many(wait_round_1, &commitment_hash).await;
     // receive commitment_hash
@@ -777,4 +776,6 @@ fn test_domain_seperate_hash() {
     let hash_1 = domain_separate_hash(cnt, &participants_1);
     let hash_2 = domain_separate_hash(cnt, &participants_2);
     assert!(hash_1 == hash_2);
+    let hash_2 = domain_separate_hash(cnt+1, &participants_2);
+    assert!(hash_1 != hash_2);
 }
