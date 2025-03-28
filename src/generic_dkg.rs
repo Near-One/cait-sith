@@ -610,7 +610,7 @@ async fn do_keyshare<C: Ciphersuite>(
 /// Represents the output of the key generation protocol.
 ///
 /// This contains our share of the private key, along with the public key.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KeygenOutput<C: Ciphersuite> {
     pub private_share: SigningShare<C>,
     pub public_key_package: PublicKeyPackage<C>,

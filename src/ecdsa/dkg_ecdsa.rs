@@ -5,6 +5,7 @@ use crate::ecdsa::KeygenOutput;
 use crate::generic_dkg::*;
 use crate::protocol::internal::{make_protocol, Context};
 use crate::protocol::{InitializationError, Participant, Protocol};
+use futures::FutureExt;
 
 type E = Secp256K1Sha256;
 
@@ -16,7 +17,8 @@ pub fn keygen(
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let participants = assert_keygen_invariants(participants, me, threshold)?;
-    let fut = do_keygen(ctx.shared_channel(), participants, me, threshold);
+    let fut = do_keygen(ctx.shared_channel(), participants, me, threshold)
+        .map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
@@ -48,7 +50,8 @@ pub fn reshare(
         old_signing_key,
         old_public_key,
         old_participants,
-    );
+    )
+        .map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
@@ -83,7 +86,7 @@ pub fn refresh(
         old_signing_key,
         old_public_key,
         old_participants,
-    );
+    ).map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
