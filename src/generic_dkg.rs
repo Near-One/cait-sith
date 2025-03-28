@@ -13,6 +13,15 @@ use frost_core::{Challenge, Element, Error, Field, Group, Scalar, Signature, Sig
 use rand_core::OsRng;
 use std::ops::Index;
 
+/// Represents the output of the key generation protocol.
+///
+/// This contains our share of the private key, along with the public key.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct KeygenOutput<C: Ciphersuite> {
+    pub private_share: SigningShare<C>,
+    pub public_key_package: PublicKeyPackage<C>,
+}
+
 pub enum BytesOrder {
     BigEndian,
     LittleEndian,
@@ -577,15 +586,6 @@ async fn do_keyshare<C: Ciphersuite>(
 
     // unwrap cannot fail as round 4 ensures failing if verification_key is None
     Ok((signing_share, public_key_package))
-}
-
-/// Represents the output of the key generation protocol.
-///
-/// This contains our share of the private key, along with the public key.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct KeygenOutput<C: Ciphersuite> {
-    pub private_share: SigningShare<C>,
-    pub public_key_package: PublicKeyPackage<C>,
 }
 
 pub(crate) async fn do_keygen<C: Ciphersuite>(

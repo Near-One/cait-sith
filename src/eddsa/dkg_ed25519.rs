@@ -1,5 +1,6 @@
 use frost_ed25519::*;
 use frost_ed25519::keys::SigningShare;
+use futures::FutureExt;
 use keys::PublicKeyPackage;
 
 use crate::eddsa::KeygenOutput;
@@ -17,7 +18,8 @@ pub fn keygen(
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let participants = assert_keygen_invariants(participants, me, threshold)?;
-    let fut = do_keygen(ctx.shared_channel(), participants, me, threshold);
+    let fut = do_keygen(ctx.shared_channel(), participants, me, threshold)
+        .map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
@@ -50,7 +52,8 @@ pub fn reshare(
         old_signing_key,
         old_public_key,
         old_participants,
-    );
+    )
+        .map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
@@ -86,7 +89,8 @@ pub fn refresh(
         old_signing_key,
         old_public_key,
         old_participants,
-    );
+    )
+        .map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
