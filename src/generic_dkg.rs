@@ -8,7 +8,9 @@ use frost_core::keys::{
     CoefficientCommitment, PublicKeyPackage, SecretShare, SigningShare,
     VerifiableSecretSharingCommitment, VerifyingShare,
 };
-use frost_core::{Challenge, Element, Error, Field, Group, Scalar, Signature, SigningKey, VerifyingKey};
+use frost_core::{
+    Challenge, Element, Error, Field, Group, Scalar, Signature, SigningKey, VerifyingKey,
+};
 use rand_core::{OsRng, RngCore};
 use serde::Serialize;
 use std::ops::Index;
@@ -61,7 +63,7 @@ fn assert_keyshare_inputs<C: Ciphersuite>(
 
 /// Hashes using a domain separator
 /// The domain separator has to be manually incremented after the use of this function
-fn domain_separate_hash<T: Serialize>(domain_separator: u32, data: &T) -> Digest{
+fn domain_separate_hash<T: Serialize>(domain_separator: u32, data: &T) -> Digest {
     let preimage = (domain_separator, data);
     hash(&preimage)
 }
@@ -137,7 +139,6 @@ fn challenge<C: Ciphersuite>(
     preimage.extend_from_slice(serialized_vk_share.as_ref());
     preimage.extend_from_slice(serialized_big_r.as_ref());
 
-
     let hash = C::HDKG(&preimage[..]).ok_or(ProtocolError::DKGNotSupported)?;
     Ok(Challenge::from_scalar(hash))
 }
@@ -186,7 +187,14 @@ fn compute_proof_of_knowledge<C: Ciphersuite>(
         return Ok(None);
     };
     // generate a proof of knowledge if the participant me is not holding a secret that is zero
-    let proof = proof_of_knowledge(session_id, domain_separator, me, coefficients, coefficient_commitment, rng)?;
+    let proof = proof_of_knowledge(
+        session_id,
+        domain_separator,
+        me,
+        coefficients,
+        coefficient_commitment,
+        rng,
+    )?;
     Ok(Some(proof))
 }
 
@@ -211,7 +219,6 @@ fn internal_verify_proof_of_knowledge<C: Ciphersuite>(
     }
     Ok(())
 }
-
 
 /// Verifies the proof of knowledge of the secret coefficients used to generate the
 /// public secret sharing commitment.
@@ -253,7 +260,13 @@ fn verify_proof_of_knowledge<C: Ciphersuite>(
     // now we know the proof is not none
     let proof_of_knowledge = proof_of_knowledge.unwrap();
     // creating an identifier as required by the syntax of verify_proof_of_knowledge of frost_core
-    internal_verify_proof_of_knowledge(session_id, domain_separator, participant, commitment, &proof_of_knowledge)
+    internal_verify_proof_of_knowledge(
+        session_id,
+        domain_separator,
+        participant,
+        commitment,
+        &proof_of_knowledge,
+    )
 }
 
 /// Takes a commitment and a commitment hash and checks that
@@ -266,7 +279,8 @@ fn verify_commitment_hash<C: Ciphersuite>(
     all_hash_commitments: &ParticipantMap<'_, Digest>,
 ) -> Result<(), ProtocolError> {
     let actual_commitment_hash = all_hash_commitments.index(participant);
-    let commitment_hash = domain_separate_hash(domain_separator, &(&participant, &commitment, &session_id));
+    let commitment_hash =
+        domain_separate_hash(domain_separator, &(&participant, &commitment, &session_id));
     if *actual_commitment_hash != commitment_hash {
         return Err(ProtocolError::InvalidCommitmentHash);
     }
@@ -415,13 +429,7 @@ async fn do_keyshare<C: Ciphersuite>(
     // Start Round 0
     let mut my_session_id = [0u8; 32]; // 256 bits
     OsRng.fill_bytes(&mut my_session_id);
-    let session_ids = do_broadcast(
-        &mut chan,
-        &participants,
-        &me,
-        my_session_id,
-    )
-    .await?;
+    let session_ids = do_broadcast(&mut chan, &participants, &me, my_session_id).await?;
 
     // Start Round 1
     // generate your secret polynomial p with the constant term set to the secret
@@ -496,7 +504,13 @@ async fn do_keyshare<C: Ciphersuite>(
         )?;
 
         // verify that the commitment sent hashes to the received commitment_hash in round 1
-        verify_commitment_hash(&session_id, p, commit_domain_separator, commitment_i, &all_hash_commitments)?;
+        verify_commitment_hash(
+            &session_id,
+            p,
+            commit_domain_separator,
+            commitment_i,
+            &all_hash_commitments,
+        )?;
 
         // add received commitment and proof to the map
         all_commitments.put(p, commitment_i.clone());
@@ -573,8 +587,7 @@ async fn do_keyshare<C: Ciphersuite>(
             // check the equality between the old key and the new key without failing the unwrap
             if vk != *pk.verifying_key() {
                 err = Some(ProtocolError::AssertionFailed(
-                    "new public key does not match old public key"
-                        .to_string(),
+                    "new public key does not match old public key".to_string(),
                 ));
             }
         };
@@ -747,7 +760,6 @@ pub(crate) fn reshare_assertions<C: Ciphersuite>(
     }
     Ok((participants, old_participants))
 }
-
 
 #[test]
 fn test_domain_seperate_hash() {
