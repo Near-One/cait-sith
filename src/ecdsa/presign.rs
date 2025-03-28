@@ -1,4 +1,3 @@
-use elliptic_curve::{Field, Group, ScalarPrimitive};
 use crate::compat::CSCurve;
 use crate::ecdsa::triples::{TriplePub, TripleShare};
 use crate::ecdsa::KeygenOutput;
@@ -9,6 +8,7 @@ use crate::{
     participants::ParticipantList,
     protocol::{Participant, ProtocolError},
 };
+use elliptic_curve::{Field, Group, ScalarPrimitive};
 use serde::{Deserialize, Serialize};
 
 /// The output of the presigning protocol.
@@ -223,7 +223,7 @@ mod test {
     use rand_core::OsRng;
 
     use crate::{ecdsa::math::Polynomial, ecdsa::triples, protocol::run_protocol};
-    use frost_secp256k1::keys::{PublicKeyPackage, VerifyingShare};
+    use frost_secp256k1::keys::VerifyingShare;
     use frost_secp256k1::Identifier;
     use std::collections::BTreeMap;
 

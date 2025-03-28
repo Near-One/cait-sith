@@ -1,7 +1,8 @@
-use k256::{AffinePoint, Scalar, Secp256k1};
-use std::error::Error;
-use frost_core::VerifyingKey;
 use crate::compat::scalar_hash;
+use frost_core::keys::SigningShare;
+use frost_core::VerifyingKey;
+use k256::{AffinePoint, Secp256k1};
+use std::error::Error;
 
 use crate::ecdsa::dkg_ecdsa::{keygen, refresh, reshare};
 use crate::ecdsa::{
@@ -11,9 +12,6 @@ use crate::ecdsa::{
     KeygenOutput,
 };
 use crate::protocol::{run_protocol, Participant, Protocol};
-
-use frost_secp256k1::keys::{PublicKeyPackage, VerifyingShare};
-use frost_secp256k1::{Group, SigningKey};
 use rand_core::OsRng;
 
 /// runs distributed keygen
@@ -44,7 +42,7 @@ pub(crate) fn run_refresh(
 
     for (p, out) in keys.iter() {
         let protocol = refresh(
-            Some(SigningKey::from_scalar(out.private_share)?),
+            Some(SigningShare::new(out.private_share)),
             VerifyingKey::new(out.public_key.into()),
             &participants,
             threshold,
@@ -92,12 +90,12 @@ pub(crate) fn run_reshare(
     for (p, out) in setup.iter() {
         let old_share = match out.0 {
             None => None,
-            Some(scalar) => Some(SigningKey::from_scalar(scalar)?)
+            Some(scalar) => Some(SigningShare::new(scalar)),
         };
         let protocol = reshare(
             &participants,
             old_threshold,
-            old_share,
+            old_share.into(),
             VerifyingKey::new(out.1.clone().into()),
             &new_participants,
             new_threshold,
