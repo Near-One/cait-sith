@@ -192,7 +192,7 @@ fn compute_proof_of_knowledge<C: Ciphersuite>(
 
 /// Verifies the proof of knowledge of the secret coefficients used to generate the
 /// public secret sharing commitment.
-pub(crate) fn internal_verify_proof_of_knowledge<C: Ciphersuite>(
+fn internal_verify_proof_of_knowledge<C: Ciphersuite>(
     session_id: &Digest,
     domain_separator: u32,
     participant: Participant,
