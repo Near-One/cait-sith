@@ -761,7 +761,7 @@ pub(crate) fn reshare_assertions<C: Ciphersuite>(
 }
 
 #[test]
-fn test_domain_seperate_hash() {
+fn test_domain_separate_hash() {
     let cnt = 1;
     let participants_1 = vec![
         Participant::from(0u32),
