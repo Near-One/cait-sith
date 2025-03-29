@@ -1,5 +1,5 @@
-use frost_ed25519::*;
-use keys::PublicKeyPackage;
+use frost_ed25519::Ed25519Sha512;
+use frost_ed25519::keys::{PublicKeyPackage, SigningShare};
 
 use crate::eddsa::KeygenOutput;
 use crate::generic_dkg::*;
@@ -24,7 +24,7 @@ pub fn keygen(
 pub fn reshare(
     old_participants: &[Participant],
     old_threshold: usize,
-    old_signing_key: Option<SigningKey>,
+    old_signing_key: Option<SigningShare>,
     old_public_key: PublicKeyPackage,
     new_participants: &[Participant],
     new_threshold: usize,
@@ -55,7 +55,7 @@ pub fn reshare(
 
 /// Performs the Ed25519 Refresh protocol
 pub fn refresh(
-    old_signing_key: Option<SigningKey>,
+    old_signing_key: Option<SigningShare>,
     old_public_key: PublicKeyPackage,
     new_participants: &[Participant],
     new_threshold: usize,
@@ -97,6 +97,8 @@ mod test {
     use crate::participants::ParticipantList;
     use crate::protocol::Participant;
     use std::error::Error;
+    use frost_core::Group;
+    use frost_ed25519::Ed25519Group;
 
     #[test]
     fn test_keygen() -> Result<(), Box<dyn Error>> {

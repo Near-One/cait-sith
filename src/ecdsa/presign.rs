@@ -1,5 +1,4 @@
 use elliptic_curve::{Field, Group, ScalarPrimitive};
-
 use crate::compat::CSCurve;
 use crate::ecdsa::triples::{TriplePub, TripleShare};
 use crate::ecdsa::KeygenOutput;
@@ -10,7 +9,8 @@ use crate::{
     participants::ParticipantList,
     protocol::{Participant, ProtocolError},
 };
-use frost_secp256k1::{SigningKey, VerifyingKey};
+use frost_secp256k1::VerifyingKey;
+use frost_secp256k1::keys::SigningShare;
 use serde::{Deserialize, Serialize};
 
 /// The output of the presigning protocol.
@@ -59,8 +59,8 @@ fn from_secp256k1sha256_to_cscurve_vk<C: CSCurve>(
 }
 
 /// Transforms a secret key of type Secp256k1Sha256 to CSCurve of cait-sith
-fn from_secp256k1sha256_to_cscurve_sk<C: CSCurve>(private_share: &SigningKey) -> C::Scalar {
-    let bytes = private_share.serialize();
+fn from_secp256k1sha256_to_cscurve_sk<C: CSCurve>(private_share: &SigningShare) -> C::Scalar {
+    let bytes = private_share.to_scalar().to_bytes();
     let bytes: [u8; 32] = bytes.try_into().expect("Slice is not 32 bytes long");
     C::from_bytes_to_scalar(bytes).unwrap()
 }
@@ -295,7 +295,7 @@ mod test {
             let verifying_key = VerifyingKey::new(big_x);
             let public_key_package = PublicKeyPackage::new(dummy_tree, verifying_key);
             let keygen_out = KeygenOutput {
-                private_share: SigningKey::from_scalar(private_share).unwrap(),
+                private_share: SigningShare::new(private_share),
                 public_key_package,
             };
 

@@ -5,7 +5,7 @@ use crate::participants::ParticipantList;
 use crate::protocol::{run_protocol, Participant, Protocol};
 
 use frost_ed25519::keys::{PublicKeyPackage, VerifyingShare};
-use frost_ed25519::{Group, SigningKey};
+use frost_ed25519::Group;
 use rand_core::{OsRng, RngCore};
 use std::error::Error;
 
@@ -45,8 +45,7 @@ pub(crate) fn build_key_packages_with_dealer(
             (
                 from_frost_identifiers[&id],
                 KeygenOutput {
-                    private_share: SigningKey::from_scalar(share.signing_share().to_scalar())
-                        .unwrap(),
+                    private_share: *share.signing_share(),
                     public_key_package: pubkey_package.clone(),
                 },
             )
