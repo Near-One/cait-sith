@@ -113,15 +113,15 @@ mod test {
 
         assert!(result.len() == participants.len());
         assert_eq!(
-            result[0].1.public_key_package,
-            result[1].1.public_key_package
+            result[0].1.public_key,
+            result[1].1.public_key
         );
         assert_eq!(
-            result[1].1.public_key_package,
-            result[2].1.public_key_package
+            result[1].1.public_key,
+            result[2].1.public_key
         );
 
-        let pub_key = result[2].1.public_key_package.verifying_key().to_element();
+        let pub_key = result[2].1.public_key.to_element();
 
         let participants = vec![result[0].0, result[1].0, result[2].0];
         let shares = vec![
@@ -149,7 +149,7 @@ mod test {
         let result0 = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&result0)?;
 
-        let pub_key = result0[2].1.public_key_package.verifying_key().to_element();
+        let pub_key = result0[2].1.public_key.to_element();
 
         let result1 = run_refresh(&participants, result0, threshold)?;
         assert_public_key_invariant(&result1)?;
@@ -181,7 +181,7 @@ mod test {
         let result0 = run_keygen(&participants, threshold0)?;
         assert_public_key_invariant(&result0)?;
 
-        let pub_key = result0[2].1.public_key_package.clone();
+        let pub_key = result0[2].1.public_key.clone();
 
         let mut new_participant = participants.clone();
         new_participant.push(Participant::from(31u32));
@@ -209,7 +209,7 @@ mod test {
             + p_list.generic_lagrange::<E>(participants[3]) * shares[3];
         assert_eq!(
             <Secp256K1Group>::generator() * x,
-            pub_key.verifying_key().to_element()
+            pub_key.to_element()
         );
 
         Ok(())

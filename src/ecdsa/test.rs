@@ -13,7 +13,7 @@ use crate::ecdsa::{
 use crate::protocol::{run_protocol, Participant, Protocol};
 
 use frost_secp256k1::keys::{PublicKeyPackage, VerifyingShare};
-use frost_secp256k1::Group;
+use frost_secp256k1::{Group, VerifyingKey};
 use rand_core::OsRng;
 
 /// runs distributed keygen
@@ -45,7 +45,7 @@ pub(crate) fn run_refresh(
     for (p, out) in keys.iter() {
         let protocol = refresh(
             Some(out.private_share),
-            *out.public_key_package.verifying_key(),
+            out.public_key,
             &participants,
             threshold,
             *p,
@@ -60,7 +60,7 @@ pub(crate) fn run_refresh(
 /// runs distributed reshare
 pub(crate) fn run_reshare(
     participants: &[Participant],
-    pub_key: &PublicKeyPackage,
+    pub_key: &VerifyingKey,
     keys: Vec<(Participant, KeygenOutput)>,
     old_threshold: usize,
     new_threshold: usize,
@@ -75,14 +75,14 @@ pub(crate) fn run_reshare(
             if p.clone() == new_participant.clone() {
                 setup.push((
                     p.clone(),
-                    (Some(k.private_share.clone()), k.public_key_package.clone()),
+                    (Some(k.private_share.clone()), k.public_key.clone()),
                 ));
                 is_break = true;
                 break;
             }
         }
         if !is_break {
-            setup.push((new_participant.clone(), (None, pub_key.clone())));
+            setup.push((new_participant.clone(), (None, *pub_key)));
         }
     }
 
@@ -94,7 +94,7 @@ pub(crate) fn run_reshare(
             &participants,
             old_threshold,
             out.0,
-            *out.1.verifying_key(),
+            out.1,
             &new_participants,
             new_threshold,
             *p,
@@ -106,67 +106,20 @@ pub(crate) fn run_reshare(
     Ok(result)
 }
 
-/// Assert that:
-///     1. Each participant has the same view of `PublicKeyPackage`
-///     2. Each participant is present in `PublicKeyPackage::verifying_shares()`
-///     3. No "other" participant is present in `PublicKeyPackage::verifying_shares()`
-///     4. For each participant their `verifying_share = secret_share * G`
-///     5. For each participant their `verifying_share` is the same across `KeyPackage` and `PublicKeyPackage`
+/// Assert that each participant has the same view of the public key
 pub(crate) fn assert_public_key_invariant(
     participants: &[(Participant, KeygenOutput)],
 ) -> Result<(), Box<dyn Error>> {
-    let public_key_package = participants.first().unwrap().1.public_key_package.clone();
+    let public_key_package = participants.first().unwrap().1.public_key.clone();
 
     if participants
         .iter()
-        .any(|(_, key_pair)| key_pair.public_key_package != public_key_package)
+        .any(|(_, key_pair)| key_pair.public_key != public_key_package)
     {
         assert!(
             false,
             "public key package is not the same for all participants"
         );
-    }
-
-    if public_key_package.verifying_shares().len() != participants.len() {
-        assert!(
-            false,
-            "public key package has different number of verifying shares than participants"
-        );
-    }
-
-    for (participant, key_pair) in participants {
-        let scalar = key_pair.private_share.to_scalar();
-        let actual_verifying_share = {
-            let point = frost_secp256k1::Secp256K1Group::generator() * scalar;
-            VerifyingShare::new(point)
-        };
-
-        let verifying_share = key_pair
-            .public_key_package
-            .verifying_shares()
-            .get(&participant.to_identifier())
-            .unwrap()
-            .clone();
-        if actual_verifying_share != verifying_share {
-            assert!(
-                false,
-                "verifying share in `KeyPackage` is not equal to secret share * G"
-            );
-        }
-
-        {
-            let expected_verifying_share = key_pair
-                .public_key_package
-                .verifying_shares()
-                .get(&participant.to_identifier())
-                .unwrap();
-            if actual_verifying_share != *expected_verifying_share {
-                assert!(
-                    false,
-                    "verifying share in `PublicKeyPackage` is not equal to secret share * G"
-                );
-            }
-        }
     }
 
     Ok(())
@@ -257,14 +210,14 @@ fn test_e2e() -> Result<(), Box<dyn Error>> {
     let mut keygen_result = run_keygen(&participants.clone(), threshold)?;
     keygen_result.sort_by_key(|(p, _)| *p);
 
-    let public_key = keygen_result[0].1.public_key_package.clone();
+    let public_key = keygen_result[0].1.public_key.clone();
     assert_eq!(
-        keygen_result[0].1.public_key_package,
-        keygen_result[1].1.public_key_package
+        keygen_result[0].1.public_key,
+        keygen_result[1].1.public_key
     );
     assert_eq!(
-        keygen_result[1].1.public_key_package,
-        keygen_result[2].1.public_key_package
+        keygen_result[1].1.public_key,
+        keygen_result[2].1.public_key
     );
 
     let (pub0, shares0) = triples::deal(&mut OsRng, &participants, threshold);
@@ -277,7 +230,7 @@ fn test_e2e() -> Result<(), Box<dyn Error>> {
 
     run_sign(
         presign_result,
-        public_key.verifying_key().to_element().to_affine(),
+        public_key.to_element().to_affine(),
         msg,
     );
     Ok(())
@@ -295,14 +248,14 @@ fn test_e2e_random_identifiers() -> Result<(), Box<dyn Error>> {
     let mut keygen_result = run_keygen(&participants.clone(), threshold)?;
     keygen_result.sort_by_key(|(p, _)| *p);
 
-    let public_key = keygen_result[0].1.public_key_package.clone();
+    let public_key = keygen_result[0].1.public_key.clone();
     assert_eq!(
-        keygen_result[0].1.public_key_package,
-        keygen_result[1].1.public_key_package
+        keygen_result[0].1.public_key,
+        keygen_result[1].1.public_key
     );
     assert_eq!(
-        keygen_result[1].1.public_key_package,
-        keygen_result[2].1.public_key_package
+        keygen_result[1].1.public_key,
+        keygen_result[2].1.public_key
     );
 
     let (pub0, shares0) = triples::deal(&mut OsRng, &participants, threshold);
@@ -315,7 +268,7 @@ fn test_e2e_random_identifiers() -> Result<(), Box<dyn Error>> {
 
     run_sign(
         presign_result,
-        public_key.verifying_key().to_element().to_affine(),
+        public_key.to_element().to_affine(),
         msg,
     );
     Ok(())

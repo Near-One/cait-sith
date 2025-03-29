@@ -1,20 +1,20 @@
 //! This module serves as a wrapper for Frost protocol.
 
-use frost_secp256k1::keys::{PublicKeyPackage, SigningShare};
-use frost_secp256k1::Secp256K1Sha256;
+use frost_secp256k1::keys::SigningShare;
+use frost_secp256k1::{Secp256K1Sha256, VerifyingKey};
 use crate::generic_dkg::{BytesOrder, Ciphersuite, ScalarSerializationFormat};
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Eq, PartialEq)]
 pub struct KeygenOutput {
     pub private_share: SigningShare,
-    pub public_key_package: PublicKeyPackage,
+    pub public_key: VerifyingKey,
 }
 
 impl From<crate::generic_dkg::KeygenOutput<Secp256K1Sha256>> for KeygenOutput {
     fn from(value: crate::generic_dkg::KeygenOutput<Secp256K1Sha256>) -> Self {
         Self {
             private_share: value.private_share,
-            public_key_package: value.public_key_package,
+            public_key: value.public_key,
         }
     }
 }

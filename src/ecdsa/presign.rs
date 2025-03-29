@@ -95,9 +95,7 @@ async fn do_presign<C: CSCurve>(
     let a_prime_i = bt_lambda * a_i;
     let b_prime_i = bt_lambda * b_i;
 
-    let public_key = from_secp256k1sha256_to_cscurve_vk::<C>(
-        args.keygen_out.public_key_package.verifying_key(),
-    )?;
+    let public_key = from_secp256k1sha256_to_cscurve_vk::<C>(&args.keygen_out.public_key)?;
     let big_x: C::ProjectivePoint = public_key;
     let private_share = from_secp256k1sha256_to_cscurve_sk::<C>(&args.keygen_out.private_share);
     let x_prime_i = sk_lambda * private_share;
@@ -296,7 +294,7 @@ mod test {
             let public_key_package = PublicKeyPackage::new(dummy_tree, verifying_key);
             let keygen_out = KeygenOutput {
                 private_share: SigningShare::new(private_share),
-                public_key_package,
+                public_key: *public_key_package.verifying_key(),
             };
 
             let protocol = presign(

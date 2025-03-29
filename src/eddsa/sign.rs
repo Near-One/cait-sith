@@ -16,18 +16,17 @@ fn construct_key_package(
     threshold: usize,
     me: &Participant,
     signing_share: &SigningShare,
-    verification_package: &PublicKeyPackage,
+    verifying_key: &VerifyingKey,
 ) -> KeyPackage {
     let identifier = me.to_identifier();
     let signing_share = *signing_share;
     let verifying_share = signing_share.into();
-    let verifying_key = *verification_package.verifying_key();
 
     KeyPackage::new(
         identifier,
         signing_share,
         verifying_share,
-        verifying_key,
+        *verifying_key,
         threshold as u16,
     )
 }
@@ -91,7 +90,7 @@ async fn do_sign_coordinator(
     let r2_wait_point = chan.next_waitpoint();
     chan.send_many(r2_wait_point, &signing_package).await;
 
-    let vk_package = keygen_output.public_key_package;
+    let vk_package = keygen_output.public_key;
     let key_package = construct_key_package(threshold, &me, &signing_share, &vk_package);
 
     let signature_share = round2::sign(&signing_package, &nonces, &key_package)
@@ -112,7 +111,15 @@ async fn do_sign_coordinator(
     // * Converted collected signature shares into the signature.
     // * Signature is verified internally during `aggregate()` call.
 
-    let signature = frost_ed25519::aggregate(&signing_package, &signature_shares, &vk_package)
+    // We supply empty map as `verifying_shares` because we have disabled "cheater-detection" feature flag.
+    // Feature "cheater-detection" only points to a malicious participant, if there's such.
+    // It doesn't bring any additional guarantees.
+    let public_key_package = PublicKeyPackage::new(
+        BTreeMap::new(),
+        vk_package
+    );
+
+    let signature = aggregate(&signing_package, &signature_shares, &public_key_package)
         .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
 
     Ok(Some(signature))
@@ -178,7 +185,7 @@ async fn do_sign_participant(
         ));
     }
 
-    let vk_package = keygen_output.public_key_package;
+    let vk_package = keygen_output.public_key;
     let key_package = construct_key_package(threshold, &me, &signing_share, &vk_package);
 
     let signature_share = round2::sign(&signing_package, &nonces, &key_package)
@@ -349,8 +356,7 @@ mod tests {
 
         assert!(key_packages[0]
             .1
-            .public_key_package
-            .verifying_key()
+            .public_key
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
 
@@ -368,11 +374,10 @@ mod tests {
         )
         .unwrap();
         let signature = assert_single_coordinator_result(data);
-        let pub_key = key_packages1[2].1.public_key_package.clone();
+        let pub_key = key_packages1[2].1.public_key.clone();
         assert!(key_packages1[0]
             .1
-            .public_key_package
-            .verifying_key()
+            .public_key
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
 
@@ -403,8 +408,7 @@ mod tests {
         let signature = assert_single_coordinator_result(data);
         assert!(key_packages2[0]
             .1
-            .public_key_package
-            .verifying_key()
+            .public_key
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
 
@@ -424,7 +428,7 @@ mod tests {
         let result0 = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&result0)?;
 
-        let pub_key = result0[2].1.public_key_package.clone();
+        let pub_key = result0[2].1.public_key.clone();
 
         // Run heavy reshare
         let new_threshold = 5;
@@ -461,7 +465,7 @@ mod tests {
         }
         assert_eq!(
             <Ed25519Group>::generator() * x,
-            pub_key.verifying_key().to_element()
+            pub_key.to_element()
         );
 
         // Sign
@@ -481,8 +485,7 @@ mod tests {
         let signature = assert_single_coordinator_result(data);
         assert!(key_packages[0]
             .1
-            .public_key_package
-            .verifying_key()
+            .public_key
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
         Ok(())
@@ -502,7 +505,7 @@ mod tests {
         assert_public_key_invariant(&result0)?;
         let coordinators = vec![result0[0].0];
 
-        let pub_key = result0[2].1.public_key_package.clone();
+        let pub_key = result0[2].1.public_key.clone();
 
         // Run heavy reshare
         let new_threshold = 3;
@@ -537,7 +540,7 @@ mod tests {
         }
         assert_eq!(
             <Ed25519Group>::generator() * x,
-            pub_key.verifying_key().to_element()
+            pub_key.to_element()
         );
 
         // Sign
@@ -555,8 +558,7 @@ mod tests {
         let signature = assert_single_coordinator_result(data);
         assert!(key_packages[0]
             .1
-            .public_key_package
-            .verifying_key()
+            .public_key
             .verify(msg_hash.as_ref(), &signature)
             .is_ok());
         Ok(())

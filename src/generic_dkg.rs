@@ -613,7 +613,7 @@ async fn do_keyshare<C: Ciphersuite>(
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KeygenOutput<C: Ciphersuite> {
     pub private_share: SigningShare<C>,
-    pub public_key_package: PublicKeyPackage<C>,
+    pub public_key: VerifyingKey<C>,
 }
 
 pub(crate) async fn do_keygen<C: Ciphersuite>(
@@ -630,7 +630,7 @@ pub(crate) async fn do_keygen<C: Ciphersuite>(
         do_keyshare::<C>(chan, participants, me, threshold, secret, None, rng).await?;
     Ok(KeygenOutput {
         private_share,
-        public_key_package,
+        public_key: *public_key_package.verifying_key(),
     })
 }
 
@@ -703,7 +703,7 @@ pub(crate) async fn do_reshare<C: Ciphersuite>(
 
     Ok(KeygenOutput {
         private_share,
-        public_key_package,
+        public_key: *public_key_package.verifying_key(),
     })
 }
 
