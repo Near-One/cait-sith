@@ -1,7 +1,6 @@
 use frost_secp256k1::*;
-use frost_secp256k1::keys::SigningShare;
-use futures::FutureExt;
-use k256::Secp256k1;
+use keys::PublicKeyPackage;
+
 use crate::ecdsa::KeygenOutput;
 use crate::generic_dkg::*;
 use crate::protocol::internal::{make_protocol, Context};
@@ -14,11 +13,10 @@ pub fn keygen(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
-) -> Result<impl Protocol<Output = KeygenOutput<Secp256k1>>, InitializationError> {
+) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let participants = assert_keygen_invariants(participants, me, threshold)?;
-    let fut = do_keygen::<Secp256K1Sha256>(ctx.shared_channel(), participants, me, threshold)
-        .map(|x| x.map(Into::into));
+    let fut = do_keygen(ctx.shared_channel(), participants, me, threshold);
     Ok(make_protocol(ctx, fut))
 }
 
@@ -26,14 +24,15 @@ pub fn keygen(
 pub fn reshare(
     old_participants: &[Participant],
     old_threshold: usize,
-    old_signing_key: Option<SigningShare>,
-    old_public_key: VerifyingKey,
+    old_signing_key: Option<SigningKey>,
+    old_public_key: PublicKeyPackage,
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
-) -> Result<impl Protocol<Output = KeygenOutput<Secp256k1>>, InitializationError> {
+) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let threshold = new_threshold;
+    let old_public_key = *old_public_key.verifying_key();
     let (participants, old_participants) = reshare_assertions::<E>(
         new_participants,
         me,
@@ -50,19 +49,18 @@ pub fn reshare(
         old_signing_key,
         old_public_key,
         old_participants,
-    )
-        .map(|x| x.map(Into::into));
+    );
     Ok(make_protocol(ctx, fut))
 }
 
 /// Performs the Ed25519 Refresh protocol
 pub fn refresh(
-    old_signing_key: Option<SigningShare>,
-    old_public_key: VerifyingKey,
+    old_signing_key: Option<SigningKey>,
+    old_public_key: PublicKeyPackage,
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
-) -> Result<impl Protocol<Output = KeygenOutput<Secp256k1>>, InitializationError> {
+) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     if old_signing_key.is_none() {
         return Err(InitializationError::BadParameters(format!(
             "The participant {me:?} is running refresh without an old share",
@@ -70,6 +68,7 @@ pub fn refresh(
     }
     let ctx = Context::new();
     let threshold = new_threshold;
+    let old_public_key = *old_public_key.verifying_key();
     let (participants, old_participants) = reshare_assertions::<E>(
         new_participants,
         me,
@@ -86,8 +85,7 @@ pub fn refresh(
         old_signing_key,
         old_public_key,
         old_participants,
-    )
-        .map(|x| x.map(Into::into));
+    );
     Ok(make_protocol(ctx, fut))
 }
 
@@ -114,21 +112,21 @@ mod test {
 
         assert!(result.len() == participants.len());
         assert_eq!(
-            result[0].1.public_key,
-            result[1].1.public_key
+            result[0].1.public_key_package,
+            result[1].1.public_key_package
         );
         assert_eq!(
-            result[1].1.public_key,
-            result[2].1.public_key
+            result[1].1.public_key_package,
+            result[2].1.public_key_package
         );
 
-        let pub_key = result[2].1.public_key;
+        let pub_key = result[2].1.public_key_package.verifying_key().to_element();
 
         let participants = vec![result[0].0, result[1].0, result[2].0];
         let shares = vec![
-            result[0].1.private_share,
-            result[1].1.private_share,
-            result[2].1.private_share,
+            result[0].1.private_share.to_scalar(),
+            result[1].1.private_share.to_scalar(),
+            result[2].1.private_share.to_scalar(),
         ];
         let p_list = ParticipantList::new(&participants).unwrap();
         let x = p_list.generic_lagrange::<E>(participants[0]) * shares[0]
@@ -150,16 +148,16 @@ mod test {
         let result0 = run_keygen(&participants, threshold)?;
         assert_public_key_invariant(&result0)?;
 
-        let pub_key = result0[2].1.public_key;
+        let pub_key = result0[2].1.public_key_package.verifying_key().to_element();
 
         let result1 = run_refresh(&participants, result0, threshold)?;
         assert_public_key_invariant(&result1)?;
 
         let participants = vec![result1[0].0, result1[1].0, result1[2].0];
         let shares = vec![
-            result1[0].1.private_share,
-            result1[1].1.private_share,
-            result1[2].1.private_share,
+            result1[0].1.private_share.to_scalar(),
+            result1[1].1.private_share.to_scalar(),
+            result1[2].1.private_share.to_scalar(),
         ];
         let p_list = ParticipantList::new(&participants).unwrap();
         let x = p_list.generic_lagrange::<E>(participants[0]) * shares[0]
@@ -182,7 +180,7 @@ mod test {
         let result0 = run_keygen(&participants, threshold0)?;
         assert_public_key_invariant(&result0)?;
 
-        let pub_key = result0[2].1.public_key;
+        let pub_key = result0[2].1.public_key_package.clone();
 
         let mut new_participant = participants.clone();
         new_participant.push(Participant::from(31u32));
@@ -198,10 +196,10 @@ mod test {
 
         let participants = vec![result1[0].0, result1[1].0, result1[2].0, result1[3].0];
         let shares = vec![
-            result1[0].1.private_share,
-            result1[1].1.private_share,
-            result1[2].1.private_share,
-            result1[3].1.private_share,
+            result1[0].1.private_share.to_scalar(),
+            result1[1].1.private_share.to_scalar(),
+            result1[2].1.private_share.to_scalar(),
+            result1[3].1.private_share.to_scalar(),
         ];
         let p_list = ParticipantList::new(&participants).unwrap();
         let x = p_list.generic_lagrange::<E>(participants[0]) * shares[0]
@@ -210,7 +208,7 @@ mod test {
             + p_list.generic_lagrange::<E>(participants[3]) * shares[3];
         assert_eq!(
             <Secp256K1Group>::generator() * x,
-            pub_key
+            pub_key.verifying_key().to_element()
         );
 
         Ok(())

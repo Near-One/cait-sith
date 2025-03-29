@@ -32,6 +32,8 @@ fn construct_key_package(
     )
 }
 
+pub type SignatureOutput = Option<Signature>; // None for participants and Some for coordinator
+
 /// Returns a future that executes signature protocol for *the Coordinator*.
 ///
 /// WARNING: Extracted from FROST documentation:
@@ -41,14 +43,14 @@ fn construct_key_package(
 /// creating a specific ciphersuite for this, and not just sending the hash
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
-pub async fn do_sign_coordinator(
+async fn do_sign_coordinator(
     mut chan: SharedChannel,
     participants: ParticipantList,
     threshold: usize,
     me: Participant,
     keygen_output: KeygenOutput,
     message: Vec<u8>,
-) -> Result<Signature, ProtocolError> {
+) -> Result<SignatureOutput, ProtocolError> {
     let mut seen = ParticipantCounter::new(&participants);
     let mut rng = OsRng;
 
@@ -113,7 +115,7 @@ pub async fn do_sign_coordinator(
     let signature = frost_ed25519::aggregate(&signing_package, &signature_shares, &vk_package)
         .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
 
-    Ok(signature)
+    Ok(Some(signature))
 }
 
 /// Returns a future that executes signature protocol for *a Participant*.
@@ -125,14 +127,14 @@ pub async fn do_sign_coordinator(
 /// creating a specific ciphersuite for this, and not just sending the hash
 /// as if it were the message.
 /// For reference, see how RFC 8032 handles "pre-hashing".
-pub async fn do_sign_participant(
+async fn do_sign_participant(
     mut chan: SharedChannel,
     threshold: usize,
     me: Participant,
     coordinator: Participant,
     keygen_output: KeygenOutput,
     message: Vec<u8>,
-) -> Result<(), ProtocolError> {
+) -> Result<SignatureOutput, ProtocolError> {
     let mut rng = OsRng;
     if coordinator == me {
         return Err(ProtocolError::AssertionFailed(
@@ -142,7 +144,10 @@ pub async fn do_sign_participant(
         ));
     }
 
-    let (nonces, commitments) = round1::commit(&keygen_output.private_share, &mut rng);
+    // create signing share out of private_share
+    let signing_share = SigningShare::new(keygen_output.private_share.to_scalar());
+
+    let (nonces, commitments) = round1::commit(&signing_share, &mut rng);
 
     // --- Round 1.
     // * Wait for an initial message from a coordinator.
@@ -174,7 +179,7 @@ pub async fn do_sign_participant(
     }
 
     let vk_package = keygen_output.public_key_package;
-    let key_package = construct_key_package(threshold, &me, &keygen_output.private_share, &vk_package);
+    let key_package = construct_key_package(threshold, &me, &signing_share, &vk_package);
 
     let signature_share = round2::sign(&signing_package, &nonces, &key_package)
         .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
@@ -182,17 +187,27 @@ pub async fn do_sign_participant(
     chan.send_private(r2_wait_point, coordinator, &signature_share)
         .await;
 
-    Ok(())
+    Ok(None)
 }
 
-pub fn sign_coordinator(
+/// Depending on whether the current participant is a coordinator or not,
+/// runs the signature protocol as either a participant or a coordinator.
+///
+/// WARNING: Extracted from FROST documentation:
+/// In all of the main FROST ciphersuites, the entire message must be sent
+/// to participants. In some cases, where the message is too big, it may be
+/// necessary to send a hash of the message instead. We strongly suggest
+/// creating a specific ciphersuite for this, and not just sending the hash
+/// as if it were the message.
+/// For reference, see how RFC 8032 handles "pre-hashing".
+pub fn sign(
     participants: &[Participant],
     threshold: usize,
     me: Participant,
     coordinator: Participant,
     keygen_output: KeygenOutput,
     message: Vec<u8>,
-) -> Result<impl Protocol<Output = Signature>, InitializationError> {
+) -> Result<Box<dyn Protocol<Output = SignatureOutput>>, InitializationError> {
     if participants.len() < 2 {
         return Err(InitializationError::BadParameters(format!(
             "participant count cannot be < 2, found: {}",
@@ -220,61 +235,13 @@ pub fn sign_coordinator(
 
     let ctx = Context::new();
     let chan = ctx.shared_channel();
-    let fut = do_sign_coordinator(
-        chan,
-        participants,
-        threshold,
-        me,
-        keygen_output,
-        message,
-    );
-    Ok(make_protocol(ctx, fut))
-}
-
-pub fn sign_participant(
-    participants: &[Participant],
-    threshold: usize,
-    me: Participant,
-    coordinator: Participant,
-    keygen_output: KeygenOutput,
-    message: Vec<u8>,
-) -> Result<impl Protocol<Output=()>, InitializationError> {
-    if participants.len() < 2 {
-        return Err(InitializationError::BadParameters(format!(
-            "participant count cannot be < 2, found: {}",
-            participants.len()
-        )));
-    };
-    let Some(participants) = ParticipantList::new(participants) else {
-        return Err(InitializationError::BadParameters(
-            "Participants list contains duplicates".to_string(),
-        ));
-    };
-
-    // ensure my presence in the participant list
-    if !participants.contains(me) {
-        return Err(InitializationError::BadParameters(
-            format!("participant list must contain {me:?}")
-        ));
-    };
-    // ensure the coordinator is a participant
-    if !participants.contains(coordinator) {
-        return Err(InitializationError::BadParameters(
-            format!("participant list must contain coordinator {coordinator:?}")
-        ));
-    };
-
-    let ctx = Context::new();
-    let chan = ctx.shared_channel();
-    let fut = do_sign_participant(
-        chan,
-        threshold,
-        me,
-        coordinator,
-        keygen_output,
-        message,
-    );
-    Ok(make_protocol(ctx, fut))
+    if me == coordinator {
+        let fut = do_sign_coordinator(chan, participants, threshold, me, keygen_output, message);
+        Ok(Box::new(make_protocol(ctx, fut)))
+    } else {
+        let fut = do_sign_participant(chan, threshold, me, coordinator, keygen_output, message);
+        Ok(Box::new(make_protocol(ctx, fut)))
+    }
 }
 
 #[cfg(test)]
@@ -291,7 +258,9 @@ mod tests {
     use crate::protocol::Participant;
     use std::error::Error;
 
-    fn assert_single_coordinator_result(data: Vec<(Participant, Option<Signature>)>) -> Signature {
+    use super::SignatureOutput;
+
+    fn assert_single_coordinator_result(data: Vec<(Participant, SignatureOutput)>) -> Signature {
         let mut signature = None;
         let count = data
             .iter()

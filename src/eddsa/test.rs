@@ -1,18 +1,15 @@
 use crate::eddsa::dkg_ed25519::{keygen, refresh, reshare};
+use crate::eddsa::sign::{sign, SignatureOutput};
 use crate::eddsa::KeygenOutput;
 use crate::participants::ParticipantList;
 use crate::protocol::{run_protocol, Participant, Protocol};
 
-use crate::crypto::Digest;
-use crate::eddsa::sign::{
-    do_sign_coordinator, do_sign_participant,
-};
-use crate::protocol::internal::{make_protocol, Context};
 use frost_ed25519::keys::{PublicKeyPackage, VerifyingShare};
-use frost_ed25519::{Group, Signature};
+use frost_ed25519::{Group, SigningKey};
 use rand_core::{OsRng, RngCore};
 use std::error::Error;
-use futures::FutureExt;
+
+use crate::crypto::Digest;
 
 /// this is a centralized key generation
 pub(crate) fn build_key_packages_with_dealer(
@@ -48,7 +45,8 @@ pub(crate) fn build_key_packages_with_dealer(
             (
                 from_frost_identifiers[&id],
                 KeygenOutput {
-                    private_share: share.signing_share().clone(),
+                    private_share: SigningKey::from_scalar(share.signing_share().to_scalar())
+                        .unwrap(),
                     public_key_package: pubkey_package.clone(),
                 },
             )
@@ -146,8 +144,6 @@ pub(crate) fn run_reshare(
     Ok(result)
 }
 
-pub type SignatureOutput = Option<Signature>; // None for participants and Some for coordinator
-
 pub(crate) fn test_run_signature_protocols(
     participants: &[(Participant, KeygenOutput)],
     actual_signers: usize,
@@ -165,36 +161,29 @@ pub(crate) fn test_run_signature_protocols(
         .collect::<Vec<_>>();
     let coordinators = ParticipantList::new(&coordinators).unwrap();
     for (participant, key_pair) in participants.iter().take(actual_signers) {
-        let ctx = Context::new();
-        let protocol: Box<dyn Protocol<Output = SignatureOutput>> = if coordinators.contains(*participant) {
-            let participants_list = ParticipantList::new(participants_list.clone().as_slice()).unwrap();
-            let fut = do_sign_coordinator(
-                ctx.shared_channel(),
-                participants_list,
+        let protocol = if coordinators.contains(*participant) {
+            sign(
+                &participants_list,
                 threshold,
+                *participant,
                 *participant,
                 key_pair.clone(),
                 msg_hash.as_ref().to_vec(),
-            ).map(|x| x.map(|y| Some(y)));
-            let protocol = make_protocol(ctx, fut);
-            Box::new(protocol)
+            )?
         } else {
             // pick any coordinator
             let mut rng = OsRng;
             let index = rng.next_u32() as usize % coordinators.len();
             let coordinator = coordinators.get_participant(index).unwrap();
             // run the signing scheme
-            let fut = do_sign_participant(
-                ctx.shared_channel(),
+            sign(
+                &participants_list,
                 threshold,
                 *participant,
                 coordinator,
                 key_pair.clone(),
                 msg_hash.as_ref().to_vec(),
-            )
-            .map(|x| x.map(|_| None));
-            let protocol = make_protocol(ctx, fut);
-            Box::new(protocol)
+            )?
         };
         protocols.push((*participant, protocol))
     }

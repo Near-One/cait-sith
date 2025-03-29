@@ -132,7 +132,3 @@ pub use compat::CSCurve;
 
 pub mod ecdsa;
 pub mod eddsa;
-
-pub use frost_core;
-pub use frost_secp256k1;
-pub use frost_ed25519;
