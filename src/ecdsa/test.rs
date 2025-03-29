@@ -45,7 +45,7 @@ pub(crate) fn run_refresh(
     for (p, out) in keys.iter() {
         let protocol = refresh(
             Some(out.private_share),
-            out.public_key_package.clone(),
+            *out.public_key_package.verifying_key(),
             &participants,
             threshold,
             *p,
@@ -94,7 +94,7 @@ pub(crate) fn run_reshare(
             &participants,
             old_threshold,
             out.0,
-            out.1.clone(),
+            *out.1.verifying_key(),
             &new_participants,
             new_threshold,
             *p,

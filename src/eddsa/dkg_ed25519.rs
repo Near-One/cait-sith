@@ -1,5 +1,5 @@
-use frost_ed25519::Ed25519Sha512;
-use frost_ed25519::keys::{PublicKeyPackage, SigningShare};
+use frost_ed25519::{Ed25519Sha512, VerifyingKey};
+use frost_ed25519::keys::SigningShare;
 
 use crate::eddsa::KeygenOutput;
 use crate::generic_dkg::*;
@@ -25,14 +25,13 @@ pub fn reshare(
     old_participants: &[Participant],
     old_threshold: usize,
     old_signing_key: Option<SigningShare>,
-    old_public_key: PublicKeyPackage,
+    old_public_key: VerifyingKey,
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let threshold = new_threshold;
-    let old_public_key = *old_public_key.verifying_key();
     let (participants, old_participants) = reshare_assertions::<E>(
         new_participants,
         me,
@@ -56,7 +55,7 @@ pub fn reshare(
 /// Performs the Ed25519 Refresh protocol
 pub fn refresh(
     old_signing_key: Option<SigningShare>,
-    old_public_key: PublicKeyPackage,
+    old_public_key: VerifyingKey,
     new_participants: &[Participant],
     new_threshold: usize,
     me: Participant,
@@ -68,7 +67,6 @@ pub fn refresh(
     }
     let ctx = Context::new();
     let threshold = new_threshold;
-    let old_public_key = *old_public_key.verifying_key();
     let (participants, old_participants) = reshare_assertions::<E>(
         new_participants,
         me,
