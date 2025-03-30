@@ -429,7 +429,7 @@ async fn do_keyshare<C: Ciphersuite>(
     secret: Scalar<C>,
     old_reshare_package: Option<(VerifyingKey<C>, ParticipantList)>,
     mut rng: OsRng,
-) -> Result<(SigningShare<C>, PublicKeyPackage<C>), ProtocolError> {
+) -> Result<KeygenOutput<C>, ProtocolError> {
     let mut all_commitments = ParticipantMap::new(&participants);
     let mut domain_separator = 0;
     // Make sure you do not call do_keyshare with zero as secret on an old participant
@@ -604,7 +604,10 @@ async fn do_keyshare<C: Ciphersuite>(
     let public_key_package = public_key_package.unwrap();
 
     // unwrap cannot fail as round 4 ensures failing if verification_key is None
-    Ok((SigningShare::new(my_signing_share), public_key_package))
+    Ok(KeygenOutput {
+        private_share: SigningShare::new(my_signing_share),
+        public_key: *public_key_package.verifying_key(),
+    })
 }
 
 /// Represents the output of the key generation protocol.
@@ -626,12 +629,8 @@ pub(crate) async fn do_keygen<C: Ciphersuite>(
     let mut rng = OsRng;
     let secret = SigningKey::<C>::new(&mut rng).to_scalar();
     // call keyshare
-    let (private_share, public_key_package) =
-        do_keyshare::<C>(chan, participants, me, threshold, secret, None, rng).await?;
-    Ok(KeygenOutput {
-        private_share,
-        public_key: *public_key_package.verifying_key(),
-    })
+    let keygen_output = do_keyshare::<C>(chan, participants, me, threshold, secret, None, rng).await?;
+    Ok(keygen_output)
 }
 
 /// This function is to be called before running DKG
@@ -690,7 +689,7 @@ pub(crate) async fn do_reshare<C: Ciphersuite>(
         .unwrap_or(<C::Group as Group>::Field::zero());
 
     let old_reshare_package = Some((old_public_key, old_participants));
-    let (private_share, public_key_package) = do_keyshare::<C>(
+    let keygen_output = do_keyshare::<C>(
         chan,
         participants,
         me,
@@ -701,10 +700,7 @@ pub(crate) async fn do_reshare<C: Ciphersuite>(
     )
     .await?;
 
-    Ok(KeygenOutput {
-        private_share,
-        public_key: *public_key_package.verifying_key(),
-    })
+    Ok(keygen_output)
 }
 
 pub(crate) fn reshare_assertions<C: Ciphersuite>(
