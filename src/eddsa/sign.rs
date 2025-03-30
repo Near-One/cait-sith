@@ -114,10 +114,7 @@ async fn do_sign_coordinator(
     // We supply empty map as `verifying_shares` because we have disabled "cheater-detection" feature flag.
     // Feature "cheater-detection" only points to a malicious participant, if there's such.
     // It doesn't bring any additional guarantees.
-    let public_key_package = PublicKeyPackage::new(
-        BTreeMap::new(),
-        vk_package
-    );
+    let public_key_package = PublicKeyPackage::new(BTreeMap::new(), vk_package);
 
     let signature = aggregate(&signing_package, &signature_shares, &public_key_package)
         .map_err(|e| ProtocolError::AssertionFailed(e.to_string()))?;
@@ -242,7 +239,15 @@ pub fn sign(
 
     let ctx = Context::new();
     let chan = ctx.shared_channel();
-    let fut = fut_wrapper(chan, participants, threshold, me, coordinator, keygen_output, message);
+    let fut = fut_wrapper(
+        chan,
+        participants,
+        threshold,
+        me,
+        coordinator,
+        keygen_output,
+        message,
+    );
     Ok(make_protocol(ctx, fut))
 }
 
@@ -474,10 +479,7 @@ mod tests {
         for (p, share) in participants.iter().zip(shares.iter()) {
             x += p_list.generic_lagrange::<Ed25519Sha512>(*p) * share;
         }
-        assert_eq!(
-            <Ed25519Group>::generator() * x,
-            pub_key.to_element()
-        );
+        assert_eq!(<Ed25519Group>::generator() * x, pub_key.to_element());
 
         // Sign
         let actual_signers = participants.len();
@@ -549,10 +551,7 @@ mod tests {
         for (p, share) in participants.iter().zip(shares.iter()) {
             x += p_list.generic_lagrange::<Ed25519Sha512>(*p) * share;
         }
-        assert_eq!(
-            <Ed25519Group>::generator() * x,
-            pub_key.to_element()
-        );
+        assert_eq!(<Ed25519Group>::generator() * x, pub_key.to_element());
 
         // Sign
         let msg = "hello_near";

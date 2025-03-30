@@ -301,11 +301,7 @@ mod test {
 
         let msg = b"hello world";
 
-        run_sign(
-            presign_result,
-            public_key.to_element().to_affine(),
-            msg,
-        );
+        run_sign(presign_result, public_key.to_element().to_affine(), msg);
         Ok(())
     }
 
@@ -351,11 +347,7 @@ mod test {
 
         let msg = b"hello world";
 
-        run_sign(
-            presign_result,
-            public_key.to_element().to_affine(),
-            msg,
-        );
+        run_sign(presign_result, public_key.to_element().to_affine(), msg);
         Ok(())
     }
 }

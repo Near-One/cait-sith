@@ -1,8 +1,8 @@
 //! This module serves as a wrapper for Frost protocol.
 
+use crate::generic_dkg::{BytesOrder, Ciphersuite, ScalarSerializationFormat};
 use frost_secp256k1::keys::SigningShare;
 use frost_secp256k1::{Secp256K1Sha256, VerifyingKey};
-use crate::generic_dkg::{BytesOrder, Ciphersuite, ScalarSerializationFormat};
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Eq, PartialEq)]
 pub struct KeygenOutput {

@@ -4,10 +4,10 @@ use crate::eddsa::KeygenOutput;
 use crate::participants::ParticipantList;
 use crate::protocol::{run_protocol, Participant, Protocol};
 
+use crate::crypto::Digest;
 use frost_ed25519::VerifyingKey;
 use rand_core::{OsRng, RngCore};
 use std::error::Error;
-use crate::crypto::Digest;
 
 /// this is a centralized key generation
 pub(crate) fn build_key_packages_with_dealer(

@@ -381,7 +381,7 @@ async fn broadcast_success_failure(
     participants: &ParticipantList,
     me: &Participant,
     err: Option<ProtocolError>,
-    session_id: Digest
+    session_id: Digest,
 ) -> Result<(), ProtocolError> {
     match err {
         // Need for consistent Broadcast to prevent adversary from sending
@@ -399,7 +399,7 @@ async fn broadcast_success_failure(
             let vote_list = vote_list.into_vec_or_none().unwrap();
             // go through all the list of votes and check if any is fail or some does not contain the session id
 
-            if !vote_list.iter().all(|&(_, ref sid)| sid == &session_id){
+            if !vote_list.iter().all(|&(_, ref sid)| sid == &session_id) {
                 return Err(ProtocolError::AssertionFailed(
                     "A participant
                 broadcast the wrong session id. Aborting Protocol!"
@@ -407,7 +407,7 @@ async fn broadcast_success_failure(
                 ));
             };
 
-            if !vote_list.iter().all(|&(boolean,_)| boolean == true){
+            if !vote_list.iter().all(|&(boolean, _)| boolean == true) {
                 return Err(ProtocolError::AssertionFailed(
                     "A participant
                 seems to have failed its checks. Aborting Protocol!"
@@ -629,7 +629,8 @@ pub(crate) async fn do_keygen<C: Ciphersuite>(
     let mut rng = OsRng;
     let secret = SigningKey::<C>::new(&mut rng).to_scalar();
     // call keyshare
-    let keygen_output = do_keyshare::<C>(chan, participants, me, threshold, secret, None, rng).await?;
+    let keygen_output =
+        do_keyshare::<C>(chan, participants, me, threshold, secret, None, rng).await?;
     Ok(keygen_output)
 }
 
@@ -778,6 +779,6 @@ fn test_domain_separate_hash() {
     let hash_1 = domain_separate_hash(cnt, &participants_1);
     let hash_2 = domain_separate_hash(cnt, &participants_2);
     assert!(hash_1 == hash_2);
-    let hash_2 = domain_separate_hash(cnt+1, &participants_2);
+    let hash_2 = domain_separate_hash(cnt + 1, &participants_2);
     assert!(hash_1 != hash_2);
 }

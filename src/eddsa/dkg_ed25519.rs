@@ -1,5 +1,5 @@
-use frost_ed25519::{Ed25519Sha512, VerifyingKey};
 use frost_ed25519::keys::SigningShare;
+use frost_ed25519::{Ed25519Sha512, VerifyingKey};
 
 use crate::eddsa::KeygenOutput;
 use crate::generic_dkg::*;
@@ -17,8 +17,8 @@ pub fn keygen(
 ) -> Result<impl Protocol<Output = KeygenOutput>, InitializationError> {
     let ctx = Context::new();
     let participants = assert_keygen_invariants(participants, me, threshold)?;
-    let fut = do_keygen(ctx.shared_channel(), participants, me, threshold)
-        .map(|x| x.map(Into::into));
+    let fut =
+        do_keygen(ctx.shared_channel(), participants, me, threshold).map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
@@ -51,7 +51,7 @@ pub fn reshare(
         old_public_key,
         old_participants,
     )
-        .map(|x| x.map(Into::into));
+    .map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
@@ -87,7 +87,7 @@ pub fn refresh(
         old_public_key,
         old_participants,
     )
-        .map(|x| x.map(Into::into));
+    .map(|x| x.map(Into::into));
     Ok(make_protocol(ctx, fut))
 }
 
@@ -98,9 +98,9 @@ mod test {
     use crate::eddsa::test::{assert_public_key_invariant, run_keygen, run_refresh, run_reshare};
     use crate::participants::ParticipantList;
     use crate::protocol::Participant;
-    use std::error::Error;
     use frost_core::Group;
     use frost_ed25519::Ed25519Group;
+    use std::error::Error;
 
     #[test]
     fn test_keygen() -> Result<(), Box<dyn Error>> {
@@ -115,14 +115,8 @@ mod test {
         assert_public_key_invariant(&result)?;
 
         assert!(result.len() == participants.len());
-        assert_eq!(
-            result[0].1.public_key,
-            result[1].1.public_key
-        );
-        assert_eq!(
-            result[1].1.public_key,
-            result[2].1.public_key
-        );
+        assert_eq!(result[0].1.public_key, result[1].1.public_key);
+        assert_eq!(result[1].1.public_key, result[2].1.public_key);
 
         let pub_key = result[2].1.public_key.to_element();
 
@@ -210,10 +204,7 @@ mod test {
             + p_list.generic_lagrange::<E>(participants[1]) * shares[1]
             + p_list.generic_lagrange::<E>(participants[2]) * shares[2]
             + p_list.generic_lagrange::<E>(participants[3]) * shares[3];
-        assert_eq!(
-            <Ed25519Group>::generator() * x,
-            pub_key.to_element()
-        );
+        assert_eq!(<Ed25519Group>::generator() * x, pub_key.to_element());
 
         Ok(())
     }

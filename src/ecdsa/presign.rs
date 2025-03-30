@@ -1,4 +1,3 @@
-use elliptic_curve::{Field, Group, ScalarPrimitive};
 use crate::compat::CSCurve;
 use crate::ecdsa::triples::{TriplePub, TripleShare};
 use crate::ecdsa::KeygenOutput;
@@ -9,8 +8,9 @@ use crate::{
     participants::ParticipantList,
     protocol::{Participant, ProtocolError},
 };
-use frost_secp256k1::VerifyingKey;
+use elliptic_curve::{Field, Group, ScalarPrimitive};
 use frost_secp256k1::keys::SigningShare;
+use frost_secp256k1::VerifyingKey;
 use serde::{Deserialize, Serialize};
 
 /// The output of the presigning protocol.
