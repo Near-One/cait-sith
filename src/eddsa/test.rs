@@ -159,28 +159,30 @@ pub(crate) fn test_run_signature_protocols(
     let coordinators = ParticipantList::new(&coordinators).unwrap();
     for (participant, key_pair) in participants.iter().take(actual_signers) {
         let protocol = if coordinators.contains(*participant) {
-            sign(
+            let protocol = sign(
                 &participants_list,
                 threshold,
                 *participant,
                 *participant,
                 key_pair.clone(),
                 msg_hash.as_ref().to_vec(),
-            )?
+            )?;
+            Box::new(protocol)
         } else {
             // pick any coordinator
             let mut rng = OsRng;
             let index = rng.next_u32() as usize % coordinators.len();
             let coordinator = coordinators.get_participant(index).unwrap();
             // run the signing scheme
-            sign(
+            let protocol = sign(
                 &participants_list,
                 threshold,
                 *participant,
                 coordinator,
                 key_pair.clone(),
                 msg_hash.as_ref().to_vec(),
-            )?
+            )?;
+            Box::new(protocol)
         };
         protocols.push((*participant, protocol))
     }

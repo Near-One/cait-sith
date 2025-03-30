@@ -214,7 +214,7 @@ pub fn sign(
     coordinator: Participant,
     keygen_output: KeygenOutput,
     message: Vec<u8>,
-) -> Result<Box<dyn Protocol<Output = SignatureOutput>>, InitializationError> {
+) -> Result<impl Protocol<Output = SignatureOutput>, InitializationError> {
     if participants.len() < 2 {
         return Err(InitializationError::BadParameters(format!(
             "participant count cannot be < 2, found: {}",
@@ -242,12 +242,23 @@ pub fn sign(
 
     let ctx = Context::new();
     let chan = ctx.shared_channel();
+    let fut = fut_wrapper(chan, participants, threshold, me, coordinator, keygen_output, message);
+    Ok(make_protocol(ctx, fut))
+}
+
+async fn fut_wrapper(
+    chan: SharedChannel,
+    participants: ParticipantList,
+    threshold: usize,
+    me: Participant,
+    coordinator: Participant,
+    keygen_output: KeygenOutput,
+    message: Vec<u8>,
+) -> Result<SignatureOutput, ProtocolError> {
     if me == coordinator {
-        let fut = do_sign_coordinator(chan, participants, threshold, me, keygen_output, message);
-        Ok(Box::new(make_protocol(ctx, fut)))
+        do_sign_coordinator(chan, participants, threshold, me, keygen_output, message).await
     } else {
-        let fut = do_sign_participant(chan, threshold, me, coordinator, keygen_output, message);
-        Ok(Box::new(make_protocol(ctx, fut)))
+        do_sign_participant(chan, threshold, me, coordinator, keygen_output, message).await
     }
 }
 
