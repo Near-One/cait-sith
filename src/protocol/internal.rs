@@ -56,6 +56,7 @@ use std::{collections::HashMap, error, future::Future, sync::Arc};
 use crate::serde::{decode, encode_with_tag};
 
 use super::{Action, MessageData, Participant, Protocol, ProtocolError};
+use smol::pin;
 
 /// The domain for our use of meow here.
 const MEOW_DOMAIN: &[u8] = b"cait-sith channel tags";
@@ -464,6 +465,7 @@ impl<'a> Context<'a> {
 struct ProtocolExecutor<'a, T> {
     ctx: Context<'a>,
     ret_r: channel::Receiver<Result<T, ProtocolError>>,
+    cancel_sender: Option<futures::channel::oneshot::Sender<()>>,
     done: bool,
 }
 
@@ -473,8 +475,14 @@ impl<'a, T: Send + 'a> ProtocolExecutor<'a, T> {
         fut: impl Future<Output = Result<T, ProtocolError>> + Send + 'a,
     ) -> Self {
         let (ret_s, ret_r) = smol::channel::bounded(1);
+        let (cancel_sender, cancel_receiver) = futures::channel::oneshot::channel::<()>();
         let fut = async move {
-            let res = fut.await;
+            pin!(fut);
+            let res = futures::future::select(fut, cancel_receiver).await;
+            let res = match res {
+                futures::future::Either::Left((res, _)) => res,
+                futures::future::Either::Right(_) => Err(ProtocolError::Cancelled),
+            };
             ret_s
                 .send(res)
                 .await
@@ -486,7 +494,16 @@ impl<'a, T: Send + 'a> ProtocolExecutor<'a, T> {
         Self {
             ctx,
             ret_r,
+            cancel_sender: Some(cancel_sender),
             done: false,
+        }
+    }
+}
+
+impl<'a, T> Drop for ProtocolExecutor<'a, T> {
+    fn drop(&mut self) {
+        if let Some(cancel_sender) = self.cancel_sender.take() {
+            cancel_sender.send(()).ok();
         }
     }
 }

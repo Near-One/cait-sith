@@ -39,6 +39,8 @@ pub enum ProtocolError {
     MalformedSigningKey,
     /// Error in serializing point
     PointSerialization,
+    /// The protocol was cancelled.
+    Cancelled,
     /// Some generic error happened.
     Other(Box<dyn error::Error + Send + Sync>),
 }
