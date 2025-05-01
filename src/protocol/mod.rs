@@ -81,6 +81,7 @@ impl fmt::Display for ProtocolError {
             ProtocolError::PointSerialization => {
                 write!(f, "The group element could not be serialized.")
             }
+            ProtocolError::Cancelled => write!(f, "the protocol was cancelled."),
         }
     }
 }
