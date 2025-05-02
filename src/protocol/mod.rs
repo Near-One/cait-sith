@@ -39,8 +39,6 @@ pub enum ProtocolError {
     MalformedSigningKey,
     /// Error in serializing point
     PointSerialization,
-    /// The protocol was cancelled.
-    Cancelled,
     /// Some generic error happened.
     Other(Box<dyn error::Error + Send + Sync>),
 }
@@ -81,7 +79,6 @@ impl fmt::Display for ProtocolError {
             ProtocolError::PointSerialization => {
                 write!(f, "The group element could not be serialized.")
             }
-            ProtocolError::Cancelled => write!(f, "the protocol was cancelled."),
         }
     }
 }
