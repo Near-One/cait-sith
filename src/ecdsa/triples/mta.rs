@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::slice::Iter;
 use subtle::{Choice, ConditionallySelectable};
 
-use crate::protocol::internal::Comms;
+use crate::protocol::internal::{AllocCounter, Comms};
 use crate::{
     compat::CSCurve,
     protocol::{
@@ -63,6 +63,7 @@ pub async fn mta_sender<C: CSCurve>(
     v: Vec<(C::Scalar, C::Scalar)>,
     a: C::Scalar,
 ) -> Result<C::Scalar, ProtocolError> {
+    let _alloc = AllocCounter::new("mta_sender");
     let size = v.len();
 
     // Step 1

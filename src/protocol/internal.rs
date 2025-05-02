@@ -50,6 +50,7 @@ use futures::{FutureExt, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
 use smol::{future, lock::Mutex};
 use std::collections::VecDeque;
+use std::ops::{Deref, DerefMut};
 use std::task::Context;
 use std::{collections::HashMap, error, future::Future, sync::Arc};
 
@@ -191,8 +192,19 @@ impl SubMessageQueue {
     }
 }
 
+impl Drop for SubMessageQueue {
+    fn drop(&mut self) {
+        CAIT_SITH_ALLOCATIONS_ALIVE
+            .with_label_values(&["SubMessageQueue"])
+            .dec();
+    }
+}
+
 impl Default for SubMessageQueue {
     fn default() -> Self {
+        CAIT_SITH_ALLOCATIONS_ALIVE
+            .with_label_values(&["SubMessageQueue"])
+            .inc();
         let (sender, receiver) = futures::channel::mpsc::unbounded();
         Self {
             sender,
@@ -256,17 +268,48 @@ pub enum Message {
     Private(Participant, MessageData),
 }
 
+struct OutgoingMessageBuffer(VecDeque<Message>);
+impl Deref for OutgoingMessageBuffer {
+    type Target = VecDeque<Message>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for OutgoingMessageBuffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl OutgoingMessageBuffer {
+    pub fn new() -> Self {
+        CAIT_SITH_ALLOCATIONS_ALIVE
+            .with_label_values(&["OutgoingMessageBuffer"])
+            .inc();
+        Self(VecDeque::new())
+    }
+}
+
+impl Drop for OutgoingMessageBuffer {
+    fn drop(&mut self) {
+        CAIT_SITH_ALLOCATIONS_ALIVE
+            .with_label_values(&["OutgoingMessageBuffer"])
+            .dec();
+    }
+}
+
 #[derive(Clone)]
 pub struct Comms {
     incoming: MessageBuffer,
-    outgoing: Arc<std::sync::Mutex<VecDeque<Message>>>,
+    outgoing: Arc<std::sync::Mutex<OutgoingMessageBuffer>>,
 }
 
 impl Comms {
     pub fn new() -> Self {
         Self {
             incoming: MessageBuffer::new(),
-            outgoing: Arc::new(std::sync::Mutex::new(VecDeque::new())),
+            outgoing: Arc::new(std::sync::Mutex::new(OutgoingMessageBuffer::new())),
         }
     }
 
@@ -422,11 +465,44 @@ struct ProtocolExecutor<T> {
     result: Option<Result<T, ProtocolError>>,
 }
 
+lazy_static::lazy_static! {
+    pub static ref CAIT_SITH_ALLOCATIONS_ALIVE: prometheus::IntGaugeVec =
+        prometheus::register_int_gauge_vec!("cait_sith_allocations_alive", "allocations alive", &["type"]).unwrap();
+}
+
+pub struct AllocCounter(pub &'static str);
+
+impl AllocCounter {
+    pub fn new(name: &'static str) -> Self {
+        CAIT_SITH_ALLOCATIONS_ALIVE.with_label_values(&[name]).inc();
+        Self(name)
+    }
+}
+
+impl Drop for AllocCounter {
+    fn drop(&mut self) {
+        CAIT_SITH_ALLOCATIONS_ALIVE
+            .with_label_values(&[self.0])
+            .dec();
+    }
+}
+
+impl<T> Drop for ProtocolExecutor<T> {
+    fn drop(&mut self) {
+        CAIT_SITH_ALLOCATIONS_ALIVE
+            .with_label_values(&["ProtocolExecutor"])
+            .dec();
+    }
+}
+
 impl<T: Send> ProtocolExecutor<T> {
     fn new(
         comms: Comms,
         fut: impl Future<Output = Result<T, ProtocolError>> + Send + 'static,
     ) -> Self {
+        CAIT_SITH_ALLOCATIONS_ALIVE
+            .with_label_values(&["ProtocolExecutor"])
+            .inc();
         Self {
             comms,
             fut: Some(fut.boxed()),

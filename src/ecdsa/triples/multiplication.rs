@@ -14,7 +14,7 @@ use super::{
         random_ot_extension_receiver, random_ot_extension_sender, RandomOtExtensionParams,
     },
 };
-use crate::protocol::internal::Comms;
+use crate::protocol::internal::{AllocCounter, Comms};
 use std::collections::VecDeque;
 
 pub async fn multiplication_sender<'a, C: CSCurve>(
@@ -23,6 +23,7 @@ pub async fn multiplication_sender<'a, C: CSCurve>(
     a_i: &C::Scalar,
     b_i: &C::Scalar,
 ) -> Result<C::Scalar, ProtocolError> {
+    let _alloc = AllocCounter::new("multiplication_sender");
     // First, run a fresh batch random OT ourselves
     let (delta, k) = batch_random_ot_receiver::<C>(chan.child(0)).await?;
 
@@ -56,6 +57,7 @@ pub async fn multiplication_receiver<'a, C: CSCurve>(
     a_i: &C::Scalar,
     b_i: &C::Scalar,
 ) -> Result<C::Scalar, ProtocolError> {
+    let _alloc = AllocCounter::new("multiplication_receiver");
     // First, run a fresh batch random OT ourselves
     let (k0, k1) = batch_random_ot_sender::<C>(chan.child(0)).await?;
 
@@ -120,6 +122,7 @@ pub async fn multiplication_many<C: CSCurve, const N: usize>(
     av_iv: Vec<C::Scalar>,
     bv_iv: Vec<C::Scalar>,
 ) -> Result<Vec<C::Scalar>, ProtocolError> {
+    let _alloc = AllocCounter::new("multiplication_many");
     assert!(N > 0);
     let sid_arc = Arc::new(sid);
     let av_iv_arc = Arc::new(av_iv);

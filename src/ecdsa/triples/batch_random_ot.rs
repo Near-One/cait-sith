@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::bits::{BitMatrix, BitVector, SquareBitMatrix, SEC_PARAM_8};
-use crate::protocol::internal::Comms;
+use crate::protocol::internal::{AllocCounter, Comms};
 
 const BATCH_RANDOM_OT_HASH: &[u8] = b"cait-sith v0.8.0 batch ROT";
 
@@ -42,6 +42,7 @@ type BatchRandomOTOutputSender = (SquareBitMatrix, SquareBitMatrix);
 pub async fn batch_random_ot_sender<C: CSCurve>(
     mut chan: PrivateChannel,
 ) -> Result<BatchRandomOTOutputSender, ProtocolError> {
+    let _alloc = AllocCounter::new("batch_random_ot_sender");
     // Spec 1
     let y = C::Scalar::random(&mut OsRng);
     let big_y = C::ProjectivePoint::generator() * y;
@@ -54,6 +55,7 @@ pub async fn batch_random_ot_sender<C: CSCurve>(
     let tasks = (0..SECURITY_PARAMETER).map(|i| {
         let mut chan = chan.child(i as u64);
         async move {
+            let _alloc = AllocCounter::new("batch_random_ot_sender_inner_task");
             let wait0 = chan.next_waitpoint();
             let big_x_i_affine: SerializablePoint<C> = chan.recv(wait0).await?;
 
@@ -152,6 +154,7 @@ type BatchRandomOTOutputReceiver = (BitVector, SquareBitMatrix);
 pub async fn batch_random_ot_receiver<C: CSCurve>(
     mut chan: PrivateChannel,
 ) -> Result<BatchRandomOTOutputReceiver, ProtocolError> {
+    let _alloc = AllocCounter::new("batch_random_ot_receiver");
     // Step 3
     let wait0 = chan.next_waitpoint();
     let big_y_affine: SerializablePoint<C> = chan.recv(wait0).await?;

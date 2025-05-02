@@ -17,7 +17,7 @@ use super::{
     bits::{BitMatrix, BitVector, ChoiceVector, DoubleBitVector, SquareBitMatrix},
     correlated_ot_extension::{correlated_ot_receiver, correlated_ot_sender, CorrelatedOtParams},
 };
-use crate::protocol::internal::Comms;
+use crate::protocol::internal::{AllocCounter, Comms};
 
 const MEOW_CTX: &[u8] = b"Random OT Extension Hash";
 
@@ -65,6 +65,7 @@ pub async fn random_ot_extension_sender<C: CSCurve>(
     delta: BitVector,
     k: &SquareBitMatrix,
 ) -> Result<RandomOTExtensionSenderOut<C>, ProtocolError> {
+    let _alloc = AllocCounter::new("random_ot_extension_sender");
     let adjusted_size = adjust_size(params.batch_size);
 
     // Step 2

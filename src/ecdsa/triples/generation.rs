@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::{multiplication::multiplication, TriplePub, TripleShare};
-use crate::protocol::internal::Comms;
+use crate::protocol::internal::{AllocCounter, Comms};
 
 /// The output of running the triple generation protocol.
 pub type TripleGenerationOutput<C> = (TripleShare<C>, TriplePub<C>);
@@ -485,6 +485,7 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
     threshold: usize,
 ) -> Result<TripleGenerationOutputMany<C>, ProtocolError> {
     assert!(N > 0);
+    let _alloc = AllocCounter::new("do_generation_many");
 
     let mut rng = OsRng;
     let mut chan = comms.shared_channel();
@@ -592,6 +593,7 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
         b_i_v: Vec<C::Scalar>,
     }
     let parallel_to_multiplication_task = async {
+        let _alloc = AllocCounter::new("parallel_to_multiplication_task");
         // Spec 2.5
         let wait1 = chan.next_waitpoint();
         chan.send_many(wait1, &my_confirmations);
