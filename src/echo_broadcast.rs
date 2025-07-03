@@ -16,7 +16,7 @@ pub enum MessageType<T> {
     Ready(T),
 }
 
-/// A homemade sturcture that allows counting the number of
+/// A homemade structure that allows counting the number of
 /// votes gathered during the reliable-broadcast protocol
 /// only requiring from votes to have trait PartialEq
 #[derive(Clone)]

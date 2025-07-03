@@ -4,7 +4,7 @@
 //! of protocols as much as possible. To use a protocol, you just need to be able
 //! to deliver messages to and from that protocol, and eventually it will produce
 //! a result, without you having to worry about how many rounds it has, or how
-//! to serialize the emssages it produces.
+//! to serialize the messages it produces.
 use std::{collections::HashMap, error, fmt};
 
 use ::serde::{Deserialize, Serialize};
