@@ -1,70 +1,134 @@
-# Threshold Signing
-This repository offers a cryptographic implementation of **threshold ECDSA** and **threshold EdDSA**. The implementation has undergone professional <ins>audit</ins> and supports arbitrary numbers
-of signing parties and thresholds.
+# Threshold signature framework for MPC
 
-The former implementation is imported from the [Cait-Sith](https://github.com/cronokirby/cait-sith) library and amended to meet our industrial needs. This includes modifying parts of the code to improve the performance, augment the security, and generalize functions' syntax.
+## Threshold Signing
 
-The latter implementation is mainly a wrapper of the [Frost](https://github.com/ZcashFoundation/frost) signing functions instantiated with Curve25519.
+This repository offers a cryptographic implementation of **threshold ECDSA** and
+**threshold EdDSA**. The implementation has undergone professional
+*audit* and supports arbitrary numbers of signing parties and
+thresholds.
 
-# Hierarchical File System
+The former implementation is imported from the
+[Cait-Sith](https://github.com/cronokirby/cait-sith) library and amended to meet
+our industrial needs. This includes modifying parts of the code to improve the
+performance, augment the security, and generalize functions' syntax.
 
-The repository provides implementations for both ECDSA and EdDSA.
-Each signature scheme has its own repository that implements it, namely, `src/ecdsa` and `src/eddsa`.\
-Additionally `src/compat` implements a curve trait used only for ecdsa,  `src/proofs` implements \[[Mau09](https://crypto.ethz.ch/publications/files/Maurer09.pdf)\] proofs for discrete logarithms, and `src/protocol` allows defining participants and asynchronous functions that run and test the protocol.\
-Some additional files are found in `src`. `src/serde.rs` provides functions to serialize messages, participants and elliptic curve points, `src/participants.rs` provides more complex structures related to participants mainly based on hash maps and `src/crypto.rs` implements a wrapper for Sha256 hash function.
+The latter implementation is mainly a wrapper of the
+[Frost](https://github.com/ZcashFoundation/frost) signing functions instantiated
+with Curve25519.
 
-# Important Technical Details
+## Hierarchical File System
+
+The repository provides implementations for both ECDSA and EdDSA. Each signature
+scheme has its own repository that implements it, namely, `src/ecdsa` and
+`src/eddsa`.\
+Additionally `src/compat` implements a curve trait used only for EdDSA,
+`src/proofs` implements
+\[[Mau09](https://crypto.ethz.ch/publications/files/Maurer09.pdf)\] proofs for
+discrete logarithms, and `src/protocol` allows defining participants and
+asynchronous functions that run and test the protocol.\
+Some additional files are found in `src`. `src/serde.rs` provides functions to
+serialize messages, participants and elliptic curve points,
+`src/participants.rs` provides more complex structures related to participants
+mainly based on hash maps and `src/crypto.rs` implements a wrapper for Sha256
+hash function.
+
+## Important Technical Details
+
 ### Threshold ECDSA Functionalities
-The threshold ECDSA scheme is implemented over curve Secp256k1.
-The following functionalities are provided:
-1) **Distributed Key Generation (DKG)**: allows multiple parties to each generate its own secret key shares and a corresponding master public key.
-2) **Key Resharing**: allows multiple parties to reshare their keys adding new members or kicking old members. If the sets of new/old participants is the same, then we talk about *key refreshing*.
-3) **Beaver Triple Generation (offline)**: Allows the distributive generation of multiplicative (Beaver) triples $(a,b,c)$ and their commitments $(A, B, C)$ where
-$c = a\cdot b$ and where $(A,B,C) = (g^a, g^b, g^c)$. These triples are essential for creating the presignatures.
-4) **Presigning (offline)**: Allows generating some presignatures during an offline signing phase that will be consumed during the online signing phase when the message to be signed is known to the signers.
-5) **Signing (online)**: Corresponds to the online signing phase in which the signing parties produce a valid signature
+
+The threshold ECDSA scheme is implemented over curve Secp256k1. The following
+functionalities are provided:
+
+1) **Distributed Key Generation (DKG)**: allows multiple parties to each
+   generate its own secret key shares and a corresponding master public key.
+
+2) **Key Resharing**: allows multiple parties to reshare their keys adding new
+   members or kicking old members. If the sets of new/old participants is the
+   same, then we talk about *key refreshing*.
+
+3) **Beaver Triple Generation (offline)**: Allows the distributive generation of
+multiplicative (Beaver) triples $(a,b,c)$ and their commitments $(A, B, C)$
+where $c = a\cdot b$ and where $(A,B,C) = (g^a, g^b, g^c)$. These triples are
+essential for creating the presignatures.
+
+4) **Presigning (offline)**: Allows generating some presignatures during an
+   offline signing phase that will be consumed during the online signing phase
+   when the message to be signed is known to the signers.
+  
+5) **Signing (online)**: Corresponds to the online signing phase in which the
+   signing parties produce a valid signature
 
 ### Threshold EdDSA Functionalities
-The threshold EdDSA scheme is implemented over curve
-Curve25519. We refer to such scheme as Ed25519.
-The following functionalities are provided:
+
+The threshold EdDSA scheme is implemented over curve Curve25519. We refer to
+such scheme as Ed25519. The following functionalities are provided:
+
 1) **Distributed Key Generation (DKG)**: Same as in ECDSA.
+
 2) **Key Resharing**: Same as in ECDSA.
-3) **Signing (online)**: Threshold EdDSA is generally more efficient than threshold ECDSA due to the mathematical formula behind the signature computation.Our Ed25519 implementation does not necessitate an offline phase of computation.
+
+3) **Signing (online)**: Threshold EdDSA is generally more efficient than
+   threshold ECDSA due to the mathematical formula behind the signature
+   computation. Our Ed25519 implementation does not necessitate an offline phase
+   of computation.
 
 ### General Notifications
 
-* We do not implement any verification algorithm. In fact, a party possessing the message-signature pair can simply run the verification algorithm of the corresponding classic, non-distributed  scheme using the master verification key.
+* We do not implement any verification algorithm. In fact, a party possessing
+  the message-signature pair can simply run the verification algorithm of the
+  corresponding classic, non-distributed scheme using the master verification
+  key.
 
-* Both implemented ECDSA and Ed25519 schemes do not currently provide **Robustness** i.e. recovery in case a participants drops out during presigning/signing.
+* Both implemented ECDSA and Ed25519 schemes do not currently provide
+  **Robustness** i.e. recovery in case a participants drops out during
+  presigning/signing.
 
-* Our ECDSA signing scheme outsources the message hash to the function caller (i.e. expects a hashed message as input and does not internally hash the input). However, our EdDSA implementation does not outsource the message hashing instead internally perfoms the message hash. This distinction is an artifact of the multiple different verifiers implemented in the wild where some might perform a "double hashing" and others not.
-(See \[[PoeRas24](https://link.springer.com/chapter/10.1007/978-3-031-57718-5_10)\] for an in-depth security study of ECDSA with outsourced hashing).
+* Our ECDSA signing scheme outsources the message hash to the function caller
+(i.e. expects a hashed message as input and does not internally hash the input).
+However, our EdDSA implementation does not outsource the message hashing instead
+internally performs the message hash. This distinction is an artifact of the
+multiple different verifiers implemented in the wild where some might perform a
+"double hashing" and others not. (See
+\[[PoeRas24](https://link.springer.com/chapter/10.1007/978-3-031-57718-5_10)\]
+for an in-depth security study of ECDSA with outsourced hashing).
 
-* This implementation allows abitrary number of parties and thresholds as long as the latter verifies some basic requirements (see the documentation). However, it is worth mentioning that the ECDSA scheme scales non-efficiently with the number of participants (See benchmarks).
+* This implementation allows arbitrary number of parties and thresholds as long
+  as the latter verifies some basic requirements (see the documentation).
+  However, it is worth mentioning that the ECDSA scheme scales non-efficiently
+  with the number of participants (See benchmarks).
 
-* **🚨 Important 🚨:** Our DKG/Resharing protocol is the same for both ECDSA and EdDSA except the underlying elliptic curve instantiation. Internally, this DKG makes use of a reliable broadcast channel implemented for asynchronous peer-to-peer communication. Due to a fundamental impossibility theorem for asynchronous broadcast channel, our DKG/Resharing protocol can only tolerate $n/3$ malicious parties where $n$ is the total number of parties.
+* **🚨 Important 🚨:** Our DKG/Resharing protocol is the same for both ECDSA and
+  EdDSA except the underlying elliptic curve instantiation. Internally, this DKG
+  makes use of a reliable broadcast channel implemented for asynchronous
+  peer-to-peer communication. Due to a fundamental impossibility theorem for
+  asynchronous broadcast channel, our DKG/Resharing protocol can only tolerate
+  $n/3$ malicious parties where $n$ is the total number of parties.
 
-# Build and Test
-Building the crate is fairly simple using
-``cargo build --features k256``.
+## Build and Test
 
-Run ``cargo test`` to run all the built-in test cases. Some the tests might take some time to run as they require running multiple participants at once.
+Building the crate is fairly simple using ``cargo build --features k256``.
 
-The repository contains no mock implementation of the whole running protocol in a ``main.rs`` file but we believe that the main functions are fairly simple to call.
+Run ``cargo test`` to run all the built-in test cases. Some the tests might take
+some time to run as they require running multiple participants at once.
 
-# Benchmarks
+The repository contains no mock implementation of the whole running protocol in
+a ``main.rs`` file, but we believe that the main functions are fairly simple to
+call.
+
+## Benchmarks
+
 * Benchmarks with 8 nodes -- TODO
 
-# Acknowledgements
+## Acknowledgements
+
 This implementation relies on
 [Cait-Sith](https://github.com/cronokirby/cait-sith) and
-[Frost](https://github.com/ZcashFoundation/frost) and was possible thanks to contributors that actively put this togethers:
-<center>
-  Robin Cheng<br>
-  Chelsea Komlo<br>
-  George Kuska<br>
-  Matej Pavlovic<br>
-  Simon Rastikian<br>
-  Bowen Wang<br>
-</center>
+[Frost](https://github.com/ZcashFoundation/frost) and was possible thanks to
+contributors that actively put this together:
+
+* Robin Cheng
+* Chelsea Komlo
+* George Kuska
+* Matej Pavlovic
+* Simon Rastikian
+* Bowen Wang
