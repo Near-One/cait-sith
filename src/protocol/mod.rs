@@ -7,10 +7,9 @@
 //! to serialize the emssages it produces.
 use std::{collections::HashMap, error, fmt};
 
-use crate::compat::CSCurve;
 use ::serde::{Deserialize, Serialize};
 
-use crate::generic_dkg::{BytesOrder, Ciphersuite};
+use crate::crypto::ciphersuite::{BytesOrder, Ciphersuite};
 use frost_core::serialization::SerializableScalar;
 use frost_core::{Identifier, Scalar};
 
@@ -23,8 +22,14 @@ pub enum ProtocolError {
     DKGNotSupported,
     /// Could not extract the verification Key from a commitment.
     ErrorExtractVerificationKey,
+    /// Error in reducing bytes to scalar
+    ErrorReducingBytesToScalar,
+    /// Encounter the Identity EC point when not supposed to
+    IdentityElement,
     /// The sent commitment hash does not equal the hash of the sent commitment
     InvalidCommitmentHash,
+    /// The number of arguments are not valid for the polynomial interpolation
+    InvalidInterpolationArguments,
     /// Incorrect number of commitments.
     IncorrectNumberOfCommitments,
     /// The identifier of the signer whose share validation failed.
@@ -39,6 +44,8 @@ pub enum ProtocolError {
     MalformedSigningKey,
     /// Error in serializing point
     PointSerialization,
+    /// Encounter Zero Scalar when not supposed to
+    ZeroScalar,
     /// Some generic error happened.
     Other(Box<dyn error::Error + Send + Sync>),
 }
@@ -53,15 +60,29 @@ impl fmt::Display for ProtocolError {
                 f,
                 "could not extract the verification Key from the commitment."
             ),
+            ProtocolError::ErrorReducingBytesToScalar => write!(
+                f,
+                "the given bytes are not mappable to a scalar without modular reduction."
+            ),
+            ProtocolError::IdentityElement => write!(
+                f,
+                "encoutered the identity element (identity point)."
+            ),
             ProtocolError::InvalidCommitmentHash => {
                 write!(
                     f,
                     "the sent commitment_hash does not equals the hash of the commitment"
                 )
-            }
+            },
+            ProtocolError::InvalidInterpolationArguments => {
+                write!(
+                    f,
+                    "the provided elements are invalid for polynomial interpolation"
+                )
+            },
             ProtocolError::IncorrectNumberOfCommitments => {
                 write!(f, "incorrect number of commitments")
-            }
+            },
             ProtocolError::InvalidProofOfKnowledge(p) => write!(
                 f,
                 "the proof of knowledge of participant {p:?} is not valid."
@@ -76,6 +97,7 @@ impl fmt::Display for ProtocolError {
                 write!(f, "detected a malicious participant {p:?}.")
             }
             ProtocolError::MalformedSigningKey => write!(f, "the constructed signing key is null."),
+            ProtocolError::ZeroScalar => write!(f, "encountered a zero scalar."),
             ProtocolError::PointSerialization => {
                 write!(f, "The group element could not be serialized.")
             }
@@ -124,12 +146,6 @@ impl Participant {
     /// Return this participant as little endian bytes.
     pub fn bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
-    }
-
-    /// Return the scalar associated with this participant.
-    /// The implementation follows the original cait-sith library
-    pub fn scalar<C: CSCurve>(&self) -> C::Scalar {
-        C::Scalar::from(self.0 as u64 + 1)
     }
 
     /// Return the scalar associated with this participant.

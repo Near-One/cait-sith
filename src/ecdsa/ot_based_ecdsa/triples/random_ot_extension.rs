@@ -4,24 +4,22 @@ use sha2::{Digest, Sha256};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::{
-    compat::CSCurve,
-    constants::SECURITY_PARAMETER,
-    proofs::strobe_transcript::TranscriptRng,
+    crypto::proofs::strobe_transcript::TranscriptRng,
     protocol::{
-        internal::{make_protocol, PrivateChannel},
+        internal::{make_protocol, Comms, PrivateChannel},
         run_two_party_protocol, Participant, ProtocolError,
     },
 };
 
 use super::{
     bits::{BitMatrix, BitVector, ChoiceVector, DoubleBitVector, SquareBitMatrix},
+    constants::SECURITY_PARAMETER,
     correlated_ot_extension::{correlated_ot_receiver, correlated_ot_sender, CorrelatedOtParams},
 };
-use crate::protocol::internal::Comms;
 
 const CTX: &[u8] = b"Random OT Extension Hash";
 
-fn hash_to_scalar<C: CSCurve>(i: usize, v: &BitVector) -> C::Scalar {
+fn hash_to_scalar(i: usize, v: &BitVector) -> C::Scalar {
     let mut hasher = Sha256::new();
     let i64 = u64::try_from(i).expect("failed to convert usize to u64");
 
@@ -61,7 +59,7 @@ pub type RandomOTExtensionSenderOut<C> = Vec<(
 /// The result that the receiver gets.
 pub type RandomOTExtensionReceiverOut<C> = Vec<(Choice, <C as CurveArithmetic>::Scalar)>;
 
-pub async fn random_ot_extension_sender<C: CSCurve>(
+pub async fn random_ot_extension_sender(
     mut chan: PrivateChannel,
     params: RandomOtExtensionParams<'_>,
     delta: BitVector,
@@ -131,7 +129,7 @@ pub async fn random_ot_extension_sender<C: CSCurve>(
     Ok(out)
 }
 
-pub async fn random_ot_extension_receiver<C: CSCurve>(
+pub async fn random_ot_extension_receiver(
     mut chan: PrivateChannel,
     params: RandomOtExtensionParams<'_>,
     k0: &SquareBitMatrix,
@@ -202,7 +200,7 @@ pub async fn random_ot_extension_receiver<C: CSCurve>(
 
 /// Run the random OT protocol between two parties.
 #[allow(dead_code)]
-fn run_random_ot<C: CSCurve>(
+fn run_random_ot(
     (delta, k): (BitVector, SquareBitMatrix),
     (k0, k1): (SquareBitMatrix, SquareBitMatrix),
     sid: Vec<u8>,
@@ -244,7 +242,7 @@ fn run_random_ot<C: CSCurve>(
 
 #[cfg(test)]
 mod test {
-    use crate::ecdsa::triples::batch_random_ot::run_batch_random_ot;
+    use crate::ecdsa::ot_based_ecdsa::triples::batch_random_ot::run_batch_random_ot;
 
     use super::*;
 

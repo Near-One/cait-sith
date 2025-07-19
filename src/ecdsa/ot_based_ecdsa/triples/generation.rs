@@ -1,42 +1,70 @@
-use elliptic_curve::{Field, Group, ScalarPrimitive};
+use elliptic_curve::Group;
 use rand_core::OsRng;
+use serde::Serialize;
 
-use crate::crypto::{Commitment, Randomizer};
-use crate::ecdsa::triples::multiplication::multiplication_many;
 use crate::{
-    compat::{CSCurve, SerializablePoint},
-    crypto::{commit, hash, HashOutput},
-    ecdsa::math::{GroupPolynomial, Polynomial},
-    participants::{ParticipantCounter, ParticipantList, ParticipantMap},
-    proofs::{dlog, dlogeq, strobe_transcript::Transcript},
-    protocol::{
-        internal::make_protocol, InitializationError, Participant, Protocol, ProtocolError,
+    crypto::{
+        commit::{Commitment,commit},
+        hash::{hash, HashOutput},
+        random::Randomizer,
+        polynomials::{
+            generate_polynomial,
+            commit_polynomial,
+            eval_polynomial_on_zero,
+        },
     },
-    serde::encode,
+    // ecdsa::math::{GroupPolynomial, Polynomial},
+    participants::{ParticipantCounter, ParticipantList, ParticipantMap},
+    crypto::proofs::{dlog, dlogeq, strobe_transcript::Transcript},
+    protocol::{
+        internal::{make_protocol, Comms},
+        InitializationError,
+        Participant,
+        Protocol,
+        ProtocolError,
+    },
+    ecdsa::{
+        Secp256K1Sha256,
+        Secp256K1ScalarField,
+        Field,
+        Scalar,
+    }
 };
 
-use super::{multiplication::multiplication, TriplePub, TripleShare};
-use crate::protocol::internal::Comms;
+use super::{
+    multiplication::{multiplication, multiplication_many},
+    TriplePub,
+    TripleShare
+};
+
+
+/// Encode an arbitrary serializable value into a vec.
+fn encode<T: Serialize>(val: &T) -> Vec<u8> {
+    rmp_serde::encode::to_vec(val).expect("failed to encode value")
+}
+
 
 /// The output of running the triple generation protocol.
-pub type TripleGenerationOutput<C> = (TripleShare<C>, TriplePub<C>);
+pub type TripleGenerationOutput = (TripleShare, TriplePub);
 
-pub type TripleGenerationOutputMany<C> = Vec<(TripleShare<C>, TriplePub<C>)>;
+pub type TripleGenerationOutputMany = Vec<(TripleShare, TriplePub)>;
+type C = Secp256K1Sha256;
+
 
 const LABEL: &[u8] = b"Near threshold signatures triple generation";
-
-async fn do_generation<C: CSCurve>(
+const NAME: &[u8] = b"Secp256K1Sha256";
+async fn do_generation(
     comms: Comms,
     participants: ParticipantList,
     me: Participant,
     threshold: usize,
-) -> Result<TripleGenerationOutput<C>, ProtocolError> {
+) -> Result<TripleGenerationOutput, ProtocolError> {
     let mut rng = OsRng;
     let mut chan = comms.shared_channel();
     let mut transcript = Transcript::new(LABEL);
 
     // Spec 1.1
-    transcript.message(b"group", C::NAME);
+    transcript.message(b"group", NAME);
     transcript.message(b"participants", &encode(&participants));
     // To allow interop between platforms where usize is different
     transcript.message(
@@ -45,17 +73,15 @@ async fn do_generation<C: CSCurve>(
     );
 
     // Spec 1.2
-    let e: Polynomial<C> = Polynomial::random(&mut rng, threshold);
-    let f: Polynomial<C> = Polynomial::random(&mut rng, threshold);
-    let mut l: Polynomial<C> = Polynomial::random(&mut rng, threshold);
-
+    let e = generate_polynomial::<C>(None, threshold-1, &mut rng);
+    let f = generate_polynomial::<C>(None, threshold-1, &mut rng);
     // Spec 1.3
-    l.set_zero(C::Scalar::ZERO);
+    let l = generate_polynomial::<C>(Some(Secp256K1ScalarField::zero()), threshold-1, &mut rng);
 
     // Spec 1.4
-    let big_e_i = e.commit();
-    let big_f_i = f.commit();
-    let big_l_i = l.commit();
+    let big_e_i = commit_polynomial::<C>(&e);
+    let big_f_i = commit_polynomial::<C>(&f);
+    let big_l_i = commit_polynomial::<C>(&l);
 
     // Spec 1.5
     let (my_commitment, my_randomizer) = commit(&mut rng, &(&big_e_i, &big_f_i, &big_l_i));
@@ -80,9 +106,9 @@ async fn do_generation<C: CSCurve>(
 
     // Spec 2.4
     let multiplication_task = {
-        let e0 = e.evaluate_zero();
-        let f0 = f.evaluate_zero();
-        multiplication::<C>(
+        let e0 = eval_polynomial_on_zero::<C>(&e);
+        let f0 = eval_polynomial_on_zero::<C>(&f);
+        multiplication(
             comms.clone(),
             my_confirmation,
             participants.clone(),
@@ -92,7 +118,7 @@ async fn do_generation<C: CSCurve>(
         )
     };
 
-    struct ParallelToMultiplicationTaskOutput<'a, C: CSCurve> {
+    struct ParallelToMultiplicationTaskOutput<'a> {
         seen: ParticipantCounter<'a>,
         big_e: GroupPolynomial<C>,
         big_f: GroupPolynomial<C>,
@@ -151,8 +177,8 @@ async fn do_generation<C: CSCurve>(
         // Spec 2.8
         let wait3 = chan.next_waitpoint();
         for p in participants.others(me) {
-            let a_i_j: ScalarPrimitive<C> = e.evaluate(&p.scalar::<C>()).into();
-            let b_i_j: ScalarPrimitive<C> = f.evaluate(&p.scalar::<C>()).into();
+            let a_i_j: Scalar = e.evaluate(&p.scalar::<C>()).into();
+            let b_i_j: Scalar = f.evaluate(&p.scalar::<C>()).into();
             chan.send_private(wait3, p, &(a_i_j, b_i_j));
         }
         let mut a_i = e.evaluate(&me.scalar::<C>());
@@ -267,7 +293,7 @@ async fn do_generation<C: CSCurve>(
         seen.clear();
         seen.put(me);
         while !seen.full() {
-            let (from, (a_j_i, b_j_i)): (_, (ScalarPrimitive<C>, ScalarPrimitive<C>)) =
+            let (from, (a_j_i, b_j_i)): (_, (Scalar, Scalar)) =
                 chan.recv(wait3).await?;
             if !seen.put(from) {
                 continue;
@@ -398,7 +424,7 @@ async fn do_generation<C: CSCurve>(
     l.set_zero(l0);
     let wait6 = chan.next_waitpoint();
     for p in participants.others(me) {
-        let c_i_j: ScalarPrimitive<C> = l.evaluate(&p.scalar::<C>()).into();
+        let c_i_j: Scalar = l.evaluate(&p.scalar::<C>()).into();
         chan.send_private(wait6, p, &c_i_j);
     }
     let mut c_i = l.evaluate(&me.scalar::<C>());
@@ -444,7 +470,7 @@ async fn do_generation<C: CSCurve>(
     seen.clear();
     seen.put(me);
     while !seen.full() {
-        let (from, c_j_i): (_, ScalarPrimitive<C>) = chan.recv(wait6).await?;
+        let (from, c_j_i): (_, Scalar) = chan.recv(wait6).await?;
         if !seen.put(from) {
             continue;
         }
@@ -478,7 +504,7 @@ async fn do_generation<C: CSCurve>(
     ))
 }
 
-async fn do_generation_many<C: CSCurve, const N: usize>(
+async fn do_generation_many<const N: usize>(
     comms: Comms,
     participants: ParticipantList,
     me: Participant,
@@ -491,7 +517,7 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
     let mut transcript = Transcript::new(LABEL);
 
     // Spec 1.1
-    transcript.message(b"group", C::NAME);
+    transcript.message(b"group", NAME);
     transcript.message(b"participants", &encode(&participants));
     // To allow interop between platforms where usize is different
     transcript.message(
@@ -518,9 +544,9 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
         l.set_zero(C::Scalar::ZERO);
 
         // Spec 1.4
-        let big_e_i = e.commit();
-        let big_f_i = f.commit();
-        let big_l_i = l.commit();
+        let big_e_i = commit_polynomial::<C>(&e);
+        let big_f_i = commit_polynomial::<C>(&f);
+        let big_l_i = commit_polynomial::<C>(&l);
 
         // Spec 1.5
         let (my_commitment, my_randomizer) = commit(&mut rng, &(&big_e_i, &big_f_i, &big_l_i));
@@ -582,7 +608,7 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
         )
     };
 
-    struct ParallelToMultiplicationTaskOutput<'a, C: CSCurve> {
+    struct ParallelToMultiplicationTaskOutput<'a> {
         seen: ParticipantCounter<'a>,
         big_e_v: Vec<GroupPolynomial<C>>,
         big_f_v: Vec<GroupPolynomial<C>>,
@@ -657,8 +683,8 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
             for i in 0..N {
                 let e = &e_v[i];
                 let f = &f_v[i];
-                let a_i_j: ScalarPrimitive<C> = e.evaluate(&p.scalar::<C>()).into();
-                let b_i_j: ScalarPrimitive<C> = f.evaluate(&p.scalar::<C>()).into();
+                let a_i_j: Scalar = e.evaluate(&p.scalar::<C>()).into();
+                let b_i_j: Scalar = f.evaluate(&p.scalar::<C>()).into();
                 a_i_j_v.push(a_i_j);
                 b_i_j_v.push(b_i_j);
             }
@@ -798,7 +824,7 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
         while !seen.full() {
             let (from, (a_j_i_v, b_j_i_v)): (
                 _,
-                (Vec<ScalarPrimitive<C>>, Vec<ScalarPrimitive<C>>),
+                (Vec<Scalar>, Vec<Scalar>),
             ) = chan.recv(wait3).await?;
             if !seen.put(from) {
                 continue;
@@ -960,7 +986,7 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
         let mut c_i_j_v = Vec::new();
         for i in 0..N {
             let l = &mut l_v[i];
-            let c_i_j: ScalarPrimitive<C> = l.evaluate(&p.scalar::<C>()).into();
+            let c_i_j: Scalar = l.evaluate(&p.scalar::<C>()).into();
             c_i_j_v.push(c_i_j);
         }
         chan.send_private(wait6, p, &c_i_j_v);
@@ -1027,7 +1053,7 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
     seen.clear();
     seen.put(me);
     while !seen.full() {
-        let (from, c_j_i_v): (_, Vec<ScalarPrimitive<C>>) = chan.recv(wait6).await?;
+        let (from, c_j_i_v): (_, Vec<Scalar>) = chan.recv(wait6).await?;
         if !seen.put(from) {
             continue;
         }
@@ -1083,11 +1109,11 @@ async fn do_generation_many<C: CSCurve, const N: usize>(
 ///
 /// The resulting triple will be threshold shared, according to the threshold
 /// provided to this function.
-pub fn generate_triple<C: CSCurve>(
+pub fn generate_triple(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
-) -> Result<impl Protocol<Output = TripleGenerationOutput<C>>, InitializationError> {
+) -> Result<impl Protocol<Output = TripleGenerationOutput>, InitializationError> {
     if participants.len() < 2 {
         return Err(InitializationError::BadParameters(format!(
             "participant count cannot be < 2, found: {}",
@@ -1111,11 +1137,11 @@ pub fn generate_triple<C: CSCurve>(
 }
 
 /// As [`generate_triple`] but for many triples at once
-pub fn generate_triple_many<C: CSCurve, const N: usize>(
+pub fn generate_triple_many<const N: usize>(
     participants: &[Participant],
     me: Participant,
     threshold: usize,
-) -> Result<impl Protocol<Output = TripleGenerationOutputMany<C>>, InitializationError> {
+) -> Result<impl Protocol<Output = TripleGenerationOutputMany>, InitializationError> {
     if participants.len() < 2 {
         return Err(InitializationError::BadParameters(format!(
             "participant count cannot be < 2, found: {}",
@@ -1140,16 +1166,19 @@ pub fn generate_triple_many<C: CSCurve, const N: usize>(
 
 #[cfg(test)]
 mod test {
-    use k256::{ProjectivePoint, Secp256k1};
-
     use crate::{
-        ecdsa::triples::generate_triple,
+        ecdsa::{
+            ot_based_ecdsa::triples::generate_triple,
+            ProjectivePoint,
+            Secp256K1Sha256
+        },
         participants::ParticipantList,
         protocol::{run_protocol, Participant, Protocol, ProtocolError},
     };
 
     use super::{generate_triple_many, TripleGenerationOutput, TripleGenerationOutputMany};
 
+    type C = Secp256K1Sha256;
     #[test]
     fn test_triple_generation() -> Result<(), ProtocolError> {
         let participants = vec![
@@ -1162,7 +1191,7 @@ mod test {
         #[allow(clippy::type_complexity)]
         let mut protocols: Vec<(
             Participant,
-            Box<dyn Protocol<Output = TripleGenerationOutput<Secp256k1>>>,
+            Box<dyn Protocol<Output = TripleGenerationOutput>>,
         )> = Vec::with_capacity(participants.len());
 
         for &p in &participants {
@@ -1188,19 +1217,19 @@ mod test {
         ];
         let p_list = ParticipantList::new(&participants).unwrap();
 
-        let a = p_list.lagrange::<Secp256k1>(participants[0]) * triple_shares[0].a
-            + p_list.lagrange::<Secp256k1>(participants[1]) * triple_shares[1].a
-            + p_list.lagrange::<Secp256k1>(participants[2]) * triple_shares[2].a;
+        let a = p_list.generic_lagrange::<C>(participants[0]) * triple_shares[0].a
+            + p_list.generic_lagrange::<C>(participants[1]) * triple_shares[1].a
+            + p_list.generic_lagrange::<C>(participants[2]) * triple_shares[2].a;
         assert_eq!(ProjectivePoint::GENERATOR * a, triple_pub.big_a);
 
-        let b = p_list.lagrange::<Secp256k1>(participants[0]) * triple_shares[0].b
-            + p_list.lagrange::<Secp256k1>(participants[1]) * triple_shares[1].b
-            + p_list.lagrange::<Secp256k1>(participants[2]) * triple_shares[2].b;
+        let b = p_list.generic_lagrange::<C>(participants[0]) * triple_shares[0].b
+            + p_list.generic_lagrange::<C>(participants[1]) * triple_shares[1].b
+            + p_list.generic_lagrange::<C>(participants[2]) * triple_shares[2].b;
         assert_eq!(ProjectivePoint::GENERATOR * b, triple_pub.big_b);
 
-        let c = p_list.lagrange::<Secp256k1>(participants[0]) * triple_shares[0].c
-            + p_list.lagrange::<Secp256k1>(participants[1]) * triple_shares[1].c
-            + p_list.lagrange::<Secp256k1>(participants[2]) * triple_shares[2].c;
+        let c = p_list.generic_lagrange::<C>(participants[0]) * triple_shares[0].c
+            + p_list.generic_lagrange::<C>(participants[1]) * triple_shares[1].c
+            + p_list.generic_lagrange::<C>(participants[2]) * triple_shares[2].c;
         assert_eq!(ProjectivePoint::GENERATOR * c, triple_pub.big_c);
 
         assert_eq!(a * b, c);
@@ -1220,7 +1249,7 @@ mod test {
         #[allow(clippy::type_complexity)]
         let mut protocols: Vec<(
             Participant,
-            Box<dyn Protocol<Output = TripleGenerationOutputMany<Secp256k1>>>,
+            Box<dyn Protocol<Output = TripleGenerationOutputMany>>,
         )> = Vec::with_capacity(participants.len());
 
         for &p in &participants {
@@ -1246,19 +1275,19 @@ mod test {
         ];
         let p_list = ParticipantList::new(&participants).unwrap();
 
-        let a = p_list.lagrange::<Secp256k1>(participants[0]) * triple_shares[0].a
-            + p_list.lagrange::<Secp256k1>(participants[1]) * triple_shares[1].a
-            + p_list.lagrange::<Secp256k1>(participants[2]) * triple_shares[2].a;
+        let a = p_list.generic_lagrange::<C>(participants[0]) * triple_shares[0].a
+            + p_list.generic_lagrange::<C>(participants[1]) * triple_shares[1].a
+            + p_list.generic_lagrange::<C>(participants[2]) * triple_shares[2].a;
         assert_eq!(ProjectivePoint::GENERATOR * a, triple_pub.big_a);
 
-        let b = p_list.lagrange::<Secp256k1>(participants[0]) * triple_shares[0].b
-            + p_list.lagrange::<Secp256k1>(participants[1]) * triple_shares[1].b
-            + p_list.lagrange::<Secp256k1>(participants[2]) * triple_shares[2].b;
+        let b = p_list.generic_lagrange::<C>(participants[0]) * triple_shares[0].b
+            + p_list.generic_lagrange::<C>(participants[1]) * triple_shares[1].b
+            + p_list.generic_lagrange::<C>(participants[2]) * triple_shares[2].b;
         assert_eq!(ProjectivePoint::GENERATOR * b, triple_pub.big_b);
 
-        let c = p_list.lagrange::<Secp256k1>(participants[0]) * triple_shares[0].c
-            + p_list.lagrange::<Secp256k1>(participants[1]) * triple_shares[1].c
-            + p_list.lagrange::<Secp256k1>(participants[2]) * triple_shares[2].c;
+        let c = p_list.generic_lagrange::<C>(participants[0]) * triple_shares[0].c
+            + p_list.generic_lagrange::<C>(participants[1]) * triple_shares[1].c
+            + p_list.generic_lagrange::<C>(participants[2]) * triple_shares[2].c;
         assert_eq!(ProjectivePoint::GENERATOR * c, triple_pub.big_c);
 
         assert_eq!(a * b, c);
